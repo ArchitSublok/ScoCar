@@ -1,161 +1,71 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'add_vehicle_screen.dart';
 
-class GuardDashboard extends StatefulWidget {
-  const GuardDashboard({super.key});
-
-  @override
-  State<GuardDashboard> createState() => _GuardDashboardState();
-}
-
-class _GuardDashboardState extends State<GuardDashboard> {
+class GuardDashboard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0D0D1B),
-      body: Stack(
+      appBar: AppBar(
+        title: Text("Guard Dashboard", style: TextStyle(color: Colors.blue[900], fontWeight: FontWeight.bold)),
+        backgroundColor: Colors.white,
+        elevation: 0,
+        actions: [IconButton(onPressed: () {}, icon: Icon(Icons.dark_mode, color: Colors.blue))],
+      ),
+      body: Column(
         children: [
-          // Background "Deep Space" Glow
-          Positioned(
-            bottom: -100,
-            left: -50,
-            child: Container(
-              width: 300,
-              height: 300,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: Colors.blueAccent.withOpacity(0.1),
-              ),
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 100, sigmaY: 100),
-                child: Container(),
-              ),
+          _buildSummaryHeader(),
+          Expanded(
+            child: ListView.builder(
+              itemCount: 10,
+              padding: EdgeInsets.all(16),
+              itemBuilder: (context, index) => _vehicleLogCard(index),
             ),
-          ),
-          
-          CustomScrollView(
-            slivers: [
-              // 1. Futuristic Animated AppBar
-              SliverAppBar(
-                expandedHeight: 120.0,
-                floating: true,
-                backgroundColor: Colors.transparent,
-                flexibleSpace: FlexibleSpaceBar(
-                  title: const Text(
-                    "COMMAND CENTER",
-                    style: TextStyle(
-                      letterSpacing: 3,
-                      fontWeight: FontWeight.w900,
-                      fontSize: 16,
-                      color: Colors.cyanAccent,
-                    ),
-                  ),
-                  centerTitle: true,
-                ),
-                actions: [
-                  IconButton(
-                    icon: const Icon(Icons.notifications_active_outlined, color: Colors.cyanAccent),
-                    onPressed: () {},
-                  ),
-                ],
-              ),
-
-              // 2. Statistics/Status Row (Professional touch)
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.all(20.0),
-                  child: Row(
-                    children: [
-                      _buildStatusChip("SYSTEM: ACTIVE", Colors.greenAccent),
-                      const SizedBox(width: 10),
-                      _buildStatusChip("SCANS: 24", Colors.cyanAccent),
-                    ],
-                  ),
-                ),
-              ),
-
-              // 3. The Animated List
-              SliverList(
-                delegate: SliverChildBuilderDelegate(
-                  (context, index) {
-                    return TweenAnimationBuilder(
-                      duration: Duration(milliseconds: 400 + (index * 100)),
-                      tween: Tween<double>(begin: 0, end: 1),
-                      builder: (context, double value, child) {
-                        return Transform.translate(
-                          offset: Offset(0, 50 * (1 - value)),
-                          child: Opacity(
-                            opacity: value,
-                            child: _buildScanCard(index),
-                          ),
-                        );
-                      },
-                    );
-                  },
-                  childCount: 8,
-                ),
-              ),
-            ],
           ),
         ],
       ),
-      
-      // 4. Futuristic Floating Button
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => Navigator.pushNamed(context, '/add-vehicle'),
-        backgroundColor: Colors.cyanAccent,
-        elevation: 10,
-        icon: const Icon(Icons.qr_code_scanner, color: Color(0xFF0D0D1B)),
-        label: const Text(
-          "INITIATE SCAN",
-          style: TextStyle(color: Color(0xFF0D0D1B), fontWeight: FontWeight.bold),
-        ),
+        onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => AddVehicleScreen())),
+        label: Text("Add Vehicle"),
+        icon: Icon(Icons.add),
+        backgroundColor: Colors.blue[800],
       ),
     );
   }
 
-  Widget _buildStatusChip(String label, Color color) {
+  Widget _buildSummaryHeader() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withOpacity(0.5)),
-        color: color.withOpacity(0.05),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.bold),
+      padding: EdgeInsets.all(20),
+      decoration: BoxDecoration(color: Colors.blue[800], borderRadius: BorderRadius.only(bottomLeft: Radius.circular(30), bottomRight: Radius.circular(30))),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: [
+          _statItem("24", "In Today"),
+          _statItem("12", "Out Today"),
+          _statItem("150", "Total Registered"),
+        ],
       ),
     );
   }
 
-  Widget _buildScanCard(int index) {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.03),
-        borderRadius: BorderRadius.circular(15),
-        border: Border.all(color: Colors.white.withOpacity(0.05)),
-      ),
+  Widget _statItem(String value, String label) {
+    return Column(children: [
+      Text(value, style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
+      Text(label, style: TextStyle(color: Colors.white70, fontSize: 12)),
+    ]);
+  }
+
+  Widget _vehicleLogCard(int index) {
+    return Card(
+      margin: EdgeInsets.only(bottom: 12),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
       child: ListTile(
-        contentPadding: const EdgeInsets.all(16),
-        leading: Container(
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: Colors.cyanAccent.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: const Icon(Icons.directions_car_filled, color: Colors.cyanAccent),
-        ),
+        leading: CircleAvatar(backgroundColor: Colors.blue[50], child: Icon(Icons.directions_car, color: Colors.blue[800])),
         title: Text(
-          "VEHICLE-ID: ${1000 + index}X",
-          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 1),
-        ),
-        subtitle: Text(
-          "TIMESTAMP: 08:${10 + index} PM",
-          style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 12),
-        ),
-        trailing: const Icon(Icons.arrow_forward_ios, color: Colors.white24, size: 16),
+  "PB-01-AX-123$index", 
+  style: TextStyle(fontWeight: FontWeight.bold), // Corrected line
+),
+        subtitle: Text("Entry: 10:30 AM | Owner: Flat 40$index"),
+        trailing: Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
       ),
     );
   }

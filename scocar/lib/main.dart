@@ -5,6 +5,8 @@ import 'package:scocar/screens/login_screen.dart';
 import 'package:scocar/screens/guard_dashboard.dart';
 import 'package:scocar/screens/add_vehicle_screen.dart';
 
+
+
 void main() {
   runApp(const MyApp());
 }
@@ -16,11 +18,11 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
   debugShowCheckedModeBanner: false,
-  home: const LandingPage(), // Sets the initial screen
+  home:  LandingScreen(), // Sets the initial screen
   routes: {
-    '/login': (context) => const LoginScreen(),
-    '/dashboard': (context) => const GuardDashboard(),
-    '/add-vehicle': (context) => const AddVehicleScreen(),
+    '/login': (context) =>  LoginScreen(),
+    '/dashboard': (context) =>  GuardDashboard(),
+    '/add-vehicle': (context) =>  AddVehicleScreen(),
   },
 );
   }
