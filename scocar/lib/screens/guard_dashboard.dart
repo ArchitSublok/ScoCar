@@ -1,72 +1,76 @@
 import 'package:flutter/material.dart';
-import 'add_vehicle_screen.dart';
 
 class GuardDashboard extends StatelessWidget {
+  const GuardDashboard({super.key});
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text("Guard Dashboard", style: TextStyle(color: Colors.blue[900], fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.white,
-        elevation: 0,
-        actions: [IconButton(onPressed: () {}, icon: Icon(Icons.dark_mode, color: Colors.blue))],
-      ),
+      appBar: AppBar(title: const Text("SECURE LOGS"), centerTitle: true),
       body: Column(
         children: [
-          _buildSummaryHeader(),
+          _buildLiveStats(),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+            child: Row(children: [Text("RECENT ACTIVITY", style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.2))]),
+          ),
           Expanded(
             child: ListView.builder(
-              itemCount: 10,
-              padding: EdgeInsets.all(16),
-              itemBuilder: (context, index) => _vehicleLogCard(index),
+              itemCount: 8,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              itemBuilder: (context, i) => Card(
+                margin: const EdgeInsets.only(bottom: 12),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                child: ListTile(
+                  leading: const CircleAvatar(backgroundColor: Colors.blueGrey, child: Icon(Icons.directions_car, color: Colors.white)),
+                  title: Text("PB 01 BK ${2024 + i}", style: const TextStyle(fontWeight: FontWeight.bold)),
+                  subtitle: Text(i % 2 == 0 ? "Entry • 10:20 AM" : "Exit • 09:45 AM"),
+                  trailing: Icon(i % 2 == 0 ? Icons.arrow_downward : Icons.arrow_upward, color: i % 2 == 0 ? Colors.green : Colors.red),
+                ),
+              ),
             ),
           ),
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => AddVehicleScreen())),
-        label: Text("Add Vehicle"),
-        icon: Icon(Icons.add),
-        backgroundColor: Colors.blue[800],
+        onPressed: () => Navigator.pushNamed(context, '/add-vehicle'),
+        icon: const Icon(Icons.add),
+        label: const Text("NEW REGISTRATION"),
+        backgroundColor: Colors.blueAccent,
       ),
     );
   }
 
-  Widget _buildSummaryHeader() {
+  Widget _buildLiveStats() {
     return Container(
-      padding: EdgeInsets.all(20),
-      decoration: BoxDecoration(color: Colors.blue[800], borderRadius: BorderRadius.only(bottomLeft: Radius.circular(30), bottomRight: Radius.circular(30))),
-      child: Row(
+      margin: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(25),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(colors: [Colors.blueAccent, Colors.blue]),
+        borderRadius: BorderRadius.circular(25),
+        boxShadow: [BoxShadow(color: Colors.blue.withOpacity(0.4), blurRadius: 10, offset: const Offset(0, 5))],
+      ),
+      child: const Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          _statItem("24", "In Today"),
-          _statItem("12", "Out Today"),
-          _statItem("150", "Total Registered"),
+          _StatTile(value: "42", label: "In Society"),
+          _StatTile(value: "128", label: "Daily Total"),
         ],
       ),
     );
   }
+}
 
-  Widget _statItem(String value, String label) {
-    return Column(children: [
-      Text(value, style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
-      Text(label, style: TextStyle(color: Colors.white70, fontSize: 12)),
-    ]);
-  }
-
-  Widget _vehicleLogCard(int index) {
-    return Card(
-      margin: EdgeInsets.only(bottom: 12),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-      child: ListTile(
-        leading: CircleAvatar(backgroundColor: Colors.blue[50], child: Icon(Icons.directions_car, color: Colors.blue[800])),
-        title: Text(
-  "PB-01-AX-123$index", 
-  style: TextStyle(fontWeight: FontWeight.bold), // Corrected line
-),
-        subtitle: Text("Entry: 10:30 AM | Owner: Flat 40$index"),
-        trailing: Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
-      ),
+class _StatTile extends StatelessWidget {
+  final String value, label;
+  const _StatTile({required this.value, required this.label});
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Text(value, style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.white)),
+        Text(label, style: const TextStyle(color: Colors.white70, fontSize: 12)),
+      ],
     );
   }
 }
