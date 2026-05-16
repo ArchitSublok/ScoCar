@@ -23,7 +23,8 @@ class _LoginScreenState extends State<LoginScreen> {
           )
         ],
       ),
-      body: Padding(
+      // 🔑 FIX: Added SingleChildScrollView to handle layout when the keyboard is active
+      body: SingleChildScrollView(
         padding: const EdgeInsets.symmetric(horizontal: 30),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -42,12 +43,21 @@ class _LoginScreenState extends State<LoginScreen> {
             _buildTextField("Staff / Apartment ID", Icons.person_outline),
             const SizedBox(height: 20),
             _buildTextField("Access Code", Icons.lock_outline, obscure: true),
-            const Spacer(),
+            
+            // 🔑 FIX: Replaced 'Spacer()' with a flexible fixed height box so the layout doesn't break
+            const SizedBox(height: 80), 
+            
             SizedBox(
               width: double.infinity,
               height: 60,
               child: ElevatedButton(
-                onPressed: () => Navigator.pushNamed(context, '/dashboard'),
+                onPressed: () {
+                  if (isGuard) {
+                    Navigator.pushNamed(context, '/guard-dashboard'); // Guard view
+                  } else {
+                    Navigator.pushNamed(context, '/resident-dashboard'); // Resident view
+                  }
+                },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.blueAccent,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
