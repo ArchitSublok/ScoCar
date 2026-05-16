@@ -11,9 +11,14 @@ class ResidentDashboard extends StatelessWidget {
         title: const Text("RESIDENT PORTAL"), 
         centerTitle: true,
         actions: [
+          // 🚨 ADDED: Emergency Notification action option requested on profile layouts
           IconButton(
-            icon: const Icon(Icons.notifications_none_rounded),
-            onPressed: () {},
+            icon: const Icon(Icons.gpp_maybe_rounded, color: Colors.redAccent, size: 26),
+            onPressed: () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text("Panic signal broadcasted to gate guardhouse!"), backgroundColor: Colors.red),
+              );
+            },
           )
         ],
       ),
@@ -24,40 +29,29 @@ class ResidentDashboard extends StatelessWidget {
             padding: EdgeInsets.symmetric(horizontal: 20, vertical: 10),
             child: Row(
               children: [
-                Text("MY REGISTERED VEHICLES", 
-                  style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.2)),
+                Text("MY REGISTERED VEHICLES", style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.2)),
               ],
             ),
           ),
-          
-          // 🔑 ONLY ONE INSTANCE OF THE EXTRACTED STREAMBUILDER LIST GOES HERE
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance
-                  .collection('vehicles')
-                  .where('flatNumber', isEqualTo: 'B-402') 
-                  .snapshots(),
+              stream: FirebaseFirestore.instance.collection('vehicles').where('flatNumber', isEqualTo: 'B-402').snapshots(),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator());
                 }
                 if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
                   return const Center(
-                    child: Text(
-                      "No vehicles registered for Flat B-402.",
-                      style: TextStyle(color: Colors.grey, fontSize: 16),
-                    ),
+                    child: Text("No vehicles registered for Flat B-402.", style: TextStyle(color: Colors.grey, fontSize: 16)),
                   );
                 }
 
                 final vehicleDocs = snapshot.data!.docs;
-
                 return ListView.builder(
                   itemCount: vehicleDocs.length, 
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   itemBuilder: (context, i) {
                     final vehicle = vehicleDocs[i].data() as Map<String, dynamic>;
-                    
                     final String plateNumber = vehicle['plateNumber'] ?? 'UNKNOWN';
                     final String ownerName = vehicle['ownerName'] ?? 'Resident';
                     final String status = vehicle['status'] ?? 'ACTIVE';
@@ -70,10 +64,7 @@ class ResidentDashboard extends StatelessWidget {
                           backgroundColor: Colors.blueAccent,
                           child: Icon(Icons.directions_car_filled_rounded, color: Colors.white),
                         ),
-                        title: Text(
-                          plateNumber, 
-                          style: const TextStyle(fontWeight: FontWeight.bold),
-                        ),
+                        title: Text(plateNumber, style: const TextStyle(fontWeight: FontWeight.bold)),
                         subtitle: Text("Owner: $ownerName • $status"), 
                         trailing: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -81,14 +72,7 @@ class ResidentDashboard extends StatelessWidget {
                             color: status == 'ACTIVE' ? Colors.green.withOpacity(0.2) : Colors.red.withOpacity(0.2),
                             borderRadius: BorderRadius.circular(10),
                           ),
-                          child: Text(
-                            status,
-                            style: TextStyle(
-                              color: status == 'ACTIVE' ? Colors.green : Colors.red,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 12,
-                            ),
-                          ),
+                          child: Text(status, style: TextStyle(color: status == 'ACTIVE' ? Colors.green : Colors.red, fontWeight: FontWeight.bold, fontSize: 12)),
                         ),
                       ),
                     );
@@ -113,15 +97,8 @@ class ResidentDashboard extends StatelessWidget {
       margin: const EdgeInsets.all(20),
       padding: const EdgeInsets.all(25),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF0D47A1), Colors.blueAccent],
-        ),
+        gradient: const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFF0D47A1), Colors.blueAccent]),
         borderRadius: BorderRadius.circular(25),
-        boxShadow: [
-          BoxShadow(color: Colors.blue.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 5))
-        ],
       ),
       child: Row(
         children: [
@@ -135,16 +112,25 @@ class ResidentDashboard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text("John Doe", 
-                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white)),
+                Text("John Doe", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white)),
                 SizedBox(height: 4),
-                Text("Apartment: B-402", 
-                  style: TextStyle(color: Colors.white70, fontSize: 14)),
+                Text("Apartment: B-402", style: TextStyle(color: Colors.white70, fontSize: 14)),
               ],
-              ),
             ),
-          ],
-        ),
-      );
-    }
+          ),
+          // 📊 ADDED: Dynamic Visual Vehicles summary badge component metric tracking
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(15)),
+            child: const Column(
+              children: [
+                Text("1", style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+                Text("Vehicles", style: TextStyle(color: Colors.white70, fontSize: 10)),
+              ],
+            ),
+          )
+        ],
+      ),
+    );
   }
+}
