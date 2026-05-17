@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class AddVehicleScreen extends StatefulWidget {
-  const AddVehicleScreen({super.key});
+  final String defaultFlat;
+  const AddVehicleScreen({super.key, required this.defaultFlat});
+
   @override
   State<AddVehicleScreen> createState() => _AddVehicleScreenState();
 }
@@ -10,9 +12,15 @@ class AddVehicleScreen extends StatefulWidget {
 class _AddVehicleScreenState extends State<AddVehicleScreen> {
   final TextEditingController _plateController = TextEditingController();
   final TextEditingController _ownerController = TextEditingController();
-  final TextEditingController _flatController = TextEditingController();
+  late TextEditingController _flatController;
   final TextEditingController _contactController = TextEditingController();
   bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _flatController = TextEditingController(text: widget.defaultFlat);
+  }
 
   @override
   void dispose() {
@@ -24,26 +32,39 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
   }
 
   Future<void> _registerVehicle() async {
-    if (_plateController.text.trim().isEmpty || _ownerController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please fill in the Plate Number and Owner Name")));
+    final String plate = _plateController.text.trim().toUpperCase();
+    final String owner = _ownerController.text.trim();
+    final String flat = _flatController.text.trim().toUpperCase();
+    final String phone = _contactController.text.trim();
+
+    if (plate.isEmpty || owner.isEmpty || flat.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("All core configuration parameters required!")));
       return;
     }
+    
     setState(() => _isLoading = true);
     try {
+      // 1. Log asset declaration metadata entry into 'vehicles' collection
       await FirebaseFirestore.instance.collection('vehicles').add({
-        'plateNumber': _plateController.text.trim().toUpperCase(),
-        'ownerName': _ownerController.text.trim(),
-        'flatNumber': _flatController.text.trim().toUpperCase(),
-        'contact': _contactController.text.trim(),
-        'status': 'ACTIVE',
-        'createdAt': FieldValue.serverTimestamp(),
+        'plateNumber': plate,
+        'ownerName': owner,
+        'flatNumber': flat,
+        'contact': phone,
+        'timestamp': FieldValue.serverTimestamp(),
       });
+
+      // 2. Safely sync the profile name schema into the 'residents' index document
+      await FirebaseFirestore.instance.collection('residents').doc(flat).set({
+        'ownerName': owner,
+        'contact': phone,
+      }, SetOptions(merge: true));
+
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Vehicle Registered Successfully!")));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Asset catalog synchronization complete!"), backgroundColor: Colors.green));
         Navigator.pop(context);
       }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Registration Error: $e")));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Sync execution crash: $e")));
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -52,46 +73,14 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("REGISTER VEHICLE"), centerTitle: true),
+      appBar: AppBar(title: const Text("Register Vehicle Profile")),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(25.0),
+        padding: const EdgeInsets.all(25),
         child: Column(
           children: [
-            // 📸 ADDED: Interactive RC Document Scanner shortcut zone wrapper element block
-            GestureDetector(
-              onTap: () {
-                setState(() {
-                  _plateController.text = "DL 3C AM 5678";
-                  _ownerController.text = "John Doe";
-                  _flatController.text = "B-402";
-                  _contactController.text = "9876543210";
-                });
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text("RC details populated successfully via OCR scanner snapshot!"), backgroundColor: Colors.blueAccent),
-                );
-              },
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: 25),
-                decoration: BoxDecoration(
-                  color: Colors.blueAccent.withOpacity(0.08),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: Colors.blueAccent.withOpacity(0.5), style: BorderStyle.solid),
-                ),
-                child: const Column(
-                  children: [
-                    Icon(Icons.document_scanner_rounded, size: 44, color: Colors.blueAccent),
-                    SizedBox(height: 8),
-                    Text("SCAN VEHICLE REGISTRATION (RC)", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueAccent, fontSize: 14)),
-                    Text("Auto-extract vehicle profiles via camera parser snapshot", style: TextStyle(fontSize: 11, color: Colors.grey)),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 25),
-            _inputField("Plate Number", Icons.pin_rounded, _plateController),
+            _inputField("Plate ID Number (e.g., MH-12-AB-1234)", Icons.pin, _plateController),
             const SizedBox(height: 20),
-            _inputField("Owner Name", Icons.person, _ownerController),
+            _inputField("Full Owner Legal Identity Name", Icons.person, _ownerController),
             const SizedBox(height: 20),
             _inputField("Flat Number (e.g. B-402)", Icons.home, _flatController),
             const SizedBox(height: 20),
@@ -121,7 +110,7 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
         labelStyle: const TextStyle(color: Colors.grey),
         filled: true,
         fillColor: Colors.grey[50],
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide(color: Colors.grey[200]!)),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
       ),
     );
   }

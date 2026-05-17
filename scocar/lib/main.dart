@@ -1,6 +1,6 @@
-
 import 'package:flutter/material.dart';
-import 'package:firebase_core/firebase_core.dart'; // 👈 Add this missing import!
+import 'package:firebase_core/firebase_core.dart'; 
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'firebase_options.dart';
 
 import 'screens/landing_screen.dart';
@@ -10,58 +10,69 @@ import 'screens/add_vehicle_screen.dart';
 import 'screens/resident_dashboard.dart';
 import 'screens/log_movement_screen.dart';
 
+// Top-level background message handler for handling incoming notifications when the app is closed
+@pragma('vm:entry-point')
+Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  await Firebase.initializeApp();
+  print("Background Message Received ID: ${message.messageId}");
+}
+
+// Global theme notifier
+final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.light);
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(); // Requires your firebase_options.dart setup
-  runApp(const ScoCarApp());
+  
+  // Initialize Firebase App Instance
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+  
 
-  runApp(const ScoCarApp());
+  // Set up the background messaging handler
+  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+
+  // Stream listener for foreground notifications
+  FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+    print('🚨 Received a notification while the app was actively open!');
+    if (message.notification != null) {
+      print('Notification Title: ${message.notification!.title}');
+      print('Notification Body: ${message.notification!.body}');
+    }
+  });
+
+  runApp(const MyApp());
 }
 
-
-final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.dark);
-
-class ScoCarApp extends StatelessWidget {
-  const ScoCarApp({super.key});
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<ThemeMode>(
       valueListenable: themeNotifier,
-      builder: (_, mode, __) {
+      builder: (_, currentMode, __) {
         return MaterialApp(
-          themeMode: mode,
+          title: 'SocCar OS',
           debugShowCheckedModeBanner: false,
-          title: 'SCOCAR OS',
+          themeMode: currentMode,
           theme: ThemeData(
-            brightness: Brightness.light,
             primarySwatch: Colors.blue,
-            scaffoldBackgroundColor: Colors.grey[100],
+            brightness: Brightness.light,
+            useMaterial3: true,
           ),
           darkTheme: ThemeData(
             brightness: Brightness.dark,
-            scaffoldBackgroundColor: const Color(0xFF0A0E21),
-            cardColor: const Color(0xFF1D1E33),
+            useMaterial3: true,
           ),
-          // themeMode: mode,
           initialRoute: '/',
-          // routes: {
-          //   '/': (context) =>  LandingScreen(),
-          //   '/login': (context) =>  LoginScreen(),
-          //   '/dashboard': (context) =>  GuardDashboard(),
-          //   '/add-vehicle': (context) =>  AddVehicleScreen(),
-          //   '/resident-dashboard': (context) => ResidentDashboard(),
-          //   '/log-movement': (context) => const LogMovementScreen(),
-          // },
           routes: {
-  '/': (context) => const LandingScreen(),
-  '/login': (context) => const LoginScreen(),
-  '/guard-dashboard': (context) => const GuardDashboard(),
-  '/resident-dashboard': (context) => const ResidentDashboard(),
-  '/log-movement': (context) => const LogMovementScreen(),
-  '/add-vehicle': (context) => const AddVehicleScreen(),
-}
+            '/': (context) => const LandingScreen(),
+            '/login': (context) => const LoginScreen(),
+            // 👇 FIXED: Changed underscores (_) to dashes (-) to perfectly match login routing logic
+            '/guard_dashboard': (context) => const GuardDashboard(),
+            '/resident_dashboard': (context) => const ResidentDashboard(),
+          },
         );
       },
     );

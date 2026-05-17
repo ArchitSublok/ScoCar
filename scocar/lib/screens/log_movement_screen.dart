@@ -10,37 +10,90 @@ class LogMovementScreen extends StatefulWidget {
 
 class _LogMovementScreenState extends State<LogMovementScreen> {
   final _plateController = TextEditingController();
+  final _flatController = TextEditingController(); // 🔑 NEW: Controls destination apartment number input
   bool _isEntry = true;
   bool _isSaving = false;
-  String _selectedDeliveryCompany = ""; // Tracks if Zomato/Swiggy is active
+  String _selectedDeliveryCompany = ""; 
 
   @override
   void dispose() {
     _plateController.dispose();
+    _flatController.dispose(); // 🔑 Clean up controller resource allocation
     super.dispose();
   }
 
   void _submitLog() async {
-    if (_plateController.text.trim().isEmpty) return;
+    final String plateText = _plateController.text.trim().toUpperCase();
+    final String targetFlat = _flatController.text.trim().toUpperCase();
+    String currentCompany = _selectedDeliveryCompany.isNotEmpty ? _selectedDeliveryCompany : 'GENERAL';
+
+    if (plateText.isEmpty) {
+      _showSnackbar("Please enter a valid number plate or tracking info.", Colors.orange);
+      return;
+    }
+
+    // 🚨 ENFORCE CRITICAL RULE: Delivery tags must have a designated apartment block destination
+    if (currentCompany != 'GENERAL' && _isEntry && targetFlat.isEmpty) {
+      _showSnackbar("A target Flat Number is required for delivery authorizations!", Colors.redAccent);
+      return;
+    }
+
     setState(() => _isSaving = true);
 
     try {
+      // Simulating AI vehicle attribute identification variations based on tags
+      String mockModel = "Unknown Vehicle Type";
+      if (currentCompany == 'ZOMATO' || currentCompany == 'SWIGGY') {
+        mockModel = "Delivery Motorcycle";
+      } else {
+        mockModel = "Standard Sedan (Verified)";
+      }
+
+      // 1. Log overall checkpoint movement history record
       await FirebaseFirestore.instance.collection('logs').add({
-        'plateNumber': _plateController.text.trim().toUpperCase(),
+        'plateNumber': plateText,
         'type': _isEntry ? 'ENTRY' : 'EXIT',
-        'company': _selectedDeliveryCompany.isNotEmpty ? _selectedDeliveryCompany : 'GENERAL',
+        'company': currentCompany,
+        'detectedVehicleModel': mockModel,
+        'guardOnDuty': 'Guard Supervisor Ram',
+        'flatNumber': targetFlat.isNotEmpty ? targetFlat : 'N/A', // Attach destination flat if provided
         'timestamp': FieldValue.serverTimestamp(),
       });
 
+      // 2. 🚀 LIVE ROUTING DYNAMICALLY CHOSEN BY GUARD: 
+      // Drop an interactive request entry matching the target flat number field input
+      if (currentCompany != 'GENERAL' && _isEntry) {
+        await FirebaseFirestore.instance.collection('approvals').add({
+          'company': currentCompany,
+          'flatNumber': targetFlat, // 🔑 FIXED: No longer hardcoded to B-402! Uses input text directly.
+          'status': 'PENDING',
+          'timestamp': FieldValue.serverTimestamp(),
+          'visitorPhotoUrl': currentCompany == 'ZOMATO' 
+              ? 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150' 
+              : 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150',
+        });
+      }
+
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Log Registered!")));
-        Navigator.pop(context); // Closes the bottom sheet smoothly
+        _showSnackbar(
+          currentCompany != 'GENERAL' 
+              ? "Log saved & instant Approval request broadcasted to Flat $targetFlat!" 
+              : "Movement Log Registered Successfully!", 
+          Colors.green
+        );
+        Navigator.pop(context);
       }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
+      if (mounted) _showSnackbar("Database write fault: $e", Colors.red);
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
+  }
+
+  void _showSnackbar(String text, Color bgColor) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(text), backgroundColor: bgColor),
+    );
   }
 
   @override
@@ -51,7 +104,7 @@ class _LogMovementScreenState extends State<LogMovementScreen> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
       ),
       padding: EdgeInsets.only(
-        bottom: MediaQuery.of(context).viewInsets.bottom + 24, // Adapts safely to keyboard entry
+        bottom: MediaQuery.of(context).viewInsets.bottom + 24, 
         top: 16,
         left: 24,
         right: 24,
@@ -60,7 +113,6 @@ class _LogMovementScreenState extends State<LogMovementScreen> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // Drag handle decoration
           Container(
             width: 45,
             height: 5,
@@ -76,10 +128,10 @@ class _LogMovementScreenState extends State<LogMovementScreen> {
           ),
           const SizedBox(height: 20),
 
-          // 🛵 FIXED: Uses Wrap instead of Row to gracefully flow layout lines without clipping
+          // Vendor Selection Quick Tags
           Wrap(
-            spacing: 10.0, // Horizontal space between chips
-            runSpacing: 10.0, // Vertical space between wrapped chip rows
+            spacing: 10.0, 
+            runSpacing: 10.0, 
             alignment: WrapAlignment.center,
             children: [
               ActionChip(
@@ -125,7 +177,7 @@ class _LogMovementScreenState extends State<LogMovementScreen> {
           ),
           const SizedBox(height: 24),
           
-          // Input row field setup
+          // Number Plate Entry Row
           Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
@@ -164,9 +216,28 @@ class _LogMovementScreenState extends State<LogMovementScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 16),
+
+          // 🔑 NEW: Dynamic Destination Apartment Field UI
+          TextField(
+            controller: _flatController,
+            textCapitalization: TextCapitalization.characters,
+            style: const TextStyle(color: Colors.black),
+            decoration: InputDecoration(
+              prefixIcon: const Icon(Icons.home_work_rounded, color: Colors.blueAccent),
+              labelText: "Destination Flat Number",
+              hintText: "e.g. B-402, A-101",
+              filled: true,
+              fillColor: Colors.grey[50],
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
+              helperText: _selectedDeliveryCompany.isNotEmpty && _isEntry
+                  ? "Required to route this delivery alert to the correct resident."
+                  : "Optional for regular non-delivery entry logs.",
+            ),
+          ),
+          const SizedBox(height: 20),
           
-          // Operational Choice Chips layout
+          // Gate Direction Choice Chips
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -195,9 +266,9 @@ class _LogMovementScreenState extends State<LogMovementScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 32),
+          const SizedBox(height: 24),
           
-          // Operational dispatch button
+          // Submit Action Button
           SizedBox(
             width: double.infinity,
             height: 56,
