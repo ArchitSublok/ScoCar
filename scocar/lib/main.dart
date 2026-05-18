@@ -1,67 +1,84 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_core/firebase_core.dart'; 
+import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'firebase_options.dart';
+import 'services/notification_service.dart';
+
+import 'screens/camera_registration_screen.dart';
 
 import 'screens/landing_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/guard_dashboard.dart';
-import 'screens/add_vehicle_screen.dart';
 import 'screens/resident_dashboard.dart';
-import 'screens/log_movement_screen.dart';
 
-// Top-level background message handler for handling incoming notifications when the app is closed
+// ─────────────────────────────────────────────────────────────────────────────
+// BACKGROUND MESSAGE HANDLER
+// Must be a top-level function (not a class method).
+// Runs when app is terminated or in background.
+// ─────────────────────────────────────────────────────────────────────────────
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  await Firebase.initializeApp();
-  print("Background Message Received ID: ${message.messageId}");
+  // Firebase must be re-initialized in isolate
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+
+  debugPrint('📩 Background message: ${message.messageId}');
+  debugPrint('   Title: ${message.notification?.title}');
+  debugPrint('   Body:  ${message.notification?.body}');
+
+  // Show local notification even in background
+  await NotificationService().showLocalNotification(
+    title: message.notification?.title ?? 'SocCar Alert',
+    body: message.notification?.body ?? '',
+    payload: message.data.toString(),
+  );
 }
 
-// Global theme notifier
+// Global theme notifier — allows dark/light mode toggle from anywhere
 final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.light);
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
-  // Initialize Firebase App Instance
+
+  // 1. Initialize Firebase
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
-  
 
-  // Set up the background messaging handler
+  // 2. Register background handler BEFORE runApp
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
-  // Stream listener for foreground notifications
-  FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-    print('🚨 Received a notification while the app was actively open!');
-    if (message.notification != null) {
-      print('Notification Title: ${message.notification!.title}');
-      print('Notification Body: ${message.notification!.body}');
-    }
-  });
+  // 3. Initialize local notifications + request permissions
+  await NotificationService().init();
 
-  runApp(const MyApp());
+  // 4. Handle notification that launched the app from terminated state
+  final RemoteMessage? initialMessage =
+      await FirebaseMessaging.instance.getInitialMessage();
+  if (initialMessage != null) {
+    debugPrint('🚀 App launched from notification: ${initialMessage.data}');
+  }
+
+  runApp(const SocCarApp());
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+class SocCarApp extends StatelessWidget {
+  const SocCarApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<ThemeMode>(
       valueListenable: themeNotifier,
-      builder: (_, currentMode, __) {
+      builder: (_, mode, __) {
         return MaterialApp(
           title: 'SocCar OS',
           debugShowCheckedModeBanner: false,
-          themeMode: currentMode,
+          themeMode: mode,
           theme: ThemeData(
-            primarySwatch: Colors.blue,
+            colorSchemeSeed: Colors.blueAccent,
             brightness: Brightness.light,
             useMaterial3: true,
           ),
           darkTheme: ThemeData(
+            colorSchemeSeed: Colors.blueAccent,
             brightness: Brightness.dark,
             useMaterial3: true,
           ),
@@ -69,9 +86,9 @@ class MyApp extends StatelessWidget {
           routes: {
             '/': (context) => const LandingScreen(),
             '/login': (context) => const LoginScreen(),
-            // 👇 FIXED: Changed underscores (_) to dashes (-) to perfectly match login routing logic
             '/guard_dashboard': (context) => const GuardDashboard(),
             '/resident_dashboard': (context) => const ResidentDashboard(),
+            '/cameras': (_) => const CameraRegistrationScreen(),
           },
         );
       },
