@@ -5,27 +5,16 @@ import 'firebase_options.dart';
 import 'services/notification_service.dart';
 
 import 'screens/camera_registration_screen.dart';
-
 import 'screens/landing_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/guard_dashboard.dart';
 import 'screens/resident_dashboard.dart';
+import 'screens/vehicle_detection_screen.dart';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// BACKGROUND MESSAGE HANDLER
-// Must be a top-level function (not a class method).
-// Runs when app is terminated or in background.
-// ─────────────────────────────────────────────────────────────────────────────
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  // Firebase must be re-initialized in isolate
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-
   debugPrint('📩 Background message: ${message.messageId}');
-  debugPrint('   Title: ${message.notification?.title}');
-  debugPrint('   Body:  ${message.notification?.body}');
-
-  // Show local notification even in background
   await NotificationService().showLocalNotification(
     title: message.notification?.title ?? 'SocCar Alert',
     body: message.notification?.body ?? '',
@@ -34,29 +23,18 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 }
 
 // Global theme notifier — allows dark/light mode toggle from anywhere
-final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.light);
+final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.system);
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
-  // 1. Initialize Firebase
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
-
-  // 2. Register background handler BEFORE runApp
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
-
-  // 3. Initialize local notifications + request permissions
   await NotificationService().init();
-
-  // 4. Handle notification that launched the app from terminated state
   final RemoteMessage? initialMessage =
       await FirebaseMessaging.instance.getInitialMessage();
   if (initialMessage != null) {
     debugPrint('🚀 App launched from notification: ${initialMessage.data}');
   }
-
   runApp(const SocCarApp());
 }
 
@@ -72,16 +50,131 @@ class SocCarApp extends StatelessWidget {
           title: 'SocCar OS',
           debugShowCheckedModeBanner: false,
           themeMode: mode,
+
+          // ── Light theme ─────────────────────────────────────────────
           theme: ThemeData(
-            colorSchemeSeed: Colors.blueAccent,
+            useMaterial3: true,
             brightness: Brightness.light,
-            useMaterial3: true,
+            colorScheme: ColorScheme.fromSeed(
+              seedColor: const Color(0xFF1565C0),
+              brightness: Brightness.light,
+            ),
+            scaffoldBackgroundColor: const Color(0xFFF0F2F8),
+            cardColor: Colors.white,
+            appBarTheme: const AppBarTheme(
+              backgroundColor: Color(0xFF1565C0),
+              foregroundColor: Colors.white,
+              elevation: 0,
+              centerTitle: true,
+            ),
+            inputDecorationTheme: InputDecorationTheme(
+              filled: true,
+              fillColor: Colors.grey.shade100,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: BorderSide(color: Colors.grey.shade300),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: BorderSide(color: Colors.grey.shade300),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: const BorderSide(
+                    color: Color(0xFF1565C0), width: 1.5),
+              ),
+              labelStyle:
+                  TextStyle(color: Colors.grey.shade700, fontSize: 14),
+            ),
+            elevatedButtonTheme: ElevatedButtonThemeData(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF1565C0),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14)),
+                elevation: 0,
+              ),
+            ),
+            chipTheme: ChipThemeData(
+              backgroundColor: Colors.grey.shade200,
+              labelStyle: const TextStyle(color: Colors.black87),
+              selectedColor: const Color(0xFF1565C0),
+            ),
+            dividerColor: Colors.grey.shade300,
+            textTheme: const TextTheme(
+              bodyMedium: TextStyle(color: Color(0xFF1A1A2E)),
+              bodySmall: TextStyle(color: Colors.black54),
+              titleLarge: TextStyle(
+                  color: Color(0xFF1A1A2E), fontWeight: FontWeight.bold),
+              labelMedium:
+                  TextStyle(color: Colors.black54, fontSize: 12),
+            ),
           ),
+
+          // ── Dark theme ──────────────────────────────────────────────
           darkTheme: ThemeData(
-            colorSchemeSeed: Colors.blueAccent,
-            brightness: Brightness.dark,
             useMaterial3: true,
+            brightness: Brightness.dark,
+            colorScheme: ColorScheme.fromSeed(
+              seedColor: const Color(0xFF00E5FF),
+              brightness: Brightness.dark,
+              surface: const Color(0xFF0A0A1A),
+              onSurface: Colors.white,
+            ),
+            scaffoldBackgroundColor: const Color(0xFF0A0A1A),
+            cardColor: const Color(0xFF141428),
+            appBarTheme: const AppBarTheme(
+              backgroundColor: Color(0xFF141428),
+              foregroundColor: Colors.white,
+              elevation: 0,
+              centerTitle: true,
+            ),
+            inputDecorationTheme: InputDecorationTheme(
+              filled: true,
+              fillColor: const Color(0xFF1A1D35),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide:
+                    const BorderSide(color: Color(0xFF2E3160)),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide:
+                    const BorderSide(color: Color(0xFF2E3160)),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: const BorderSide(
+                    color: Color(0xFF00E5FF), width: 1.5),
+              ),
+              labelStyle:
+                  const TextStyle(color: Colors.white38, fontSize: 14),
+            ),
+            elevatedButtonTheme: ElevatedButtonThemeData(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF00E5FF),
+                foregroundColor: Colors.black,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14)),
+                elevation: 0,
+              ),
+            ),
+            chipTheme: const ChipThemeData(
+              backgroundColor: Color(0xFF1A1D35),
+              labelStyle: TextStyle(color: Colors.white70),
+              selectedColor: Color(0xFF00E5FF),
+            ),
+            dividerColor: const Color(0xFF2E3160),
+            textTheme: const TextTheme(
+              bodyMedium: TextStyle(color: Colors.white),
+              bodySmall: TextStyle(color: Colors.white70),
+              titleLarge:
+                  TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+              labelMedium:
+                  TextStyle(color: Colors.white54, fontSize: 12),
+            ),
           ),
+
           initialRoute: '/',
           routes: {
             '/': (context) => const LandingScreen(),
@@ -89,6 +182,7 @@ class SocCarApp extends StatelessWidget {
             '/guard_dashboard': (context) => const GuardDashboard(),
             '/resident_dashboard': (context) => const ResidentDashboard(),
             '/cameras': (_) => const CameraRegistrationScreen(),
+            '/detect_vehicle': (context) => const VehicleDetectionScreen(),
           },
         );
       },

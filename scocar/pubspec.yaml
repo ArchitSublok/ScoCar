@@ -10,6 +10,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  audioplayers: ^6.0.0
 
   # UI
   cupertino_icons: ^1.0.8
@@ -30,6 +31,8 @@ dependencies:
   # HTTP — needed to call FCM API directly from the app
   # (in production, replace with Cloud Functions)
   http: ^1.2.2
+  path_provider: ^2.1.3   # Locates secure temporary device directories to cache photos
+  path: ^1.9.0 
 
 dev_dependencies:
   flutter_test:
