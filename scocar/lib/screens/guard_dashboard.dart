@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../services/log_sort_service.dart';
+import 'log_movement_screen.dart' show activeGuardName;
 import '../services/notification_service.dart';
-import '../../main.dart' show themeNotifier;
+import '../main.dart' show themeNotifier;
 
 import 'discrepancy_alert_overlay.dart';
 import 'delivery_request_card.dart';
@@ -36,7 +38,7 @@ class _GuardDashboardState extends State<GuardDashboard> {
       if (doc.exists && doc.data() != null) {
         final data = doc.data()!;
         setState(() {
-          _fetchedGuardName = data['name'] ?? 'Guard On Duty';
+          _fetchedGuardName = data['guardName'] ?? data['name'] ?? 'Guard On Duty';
         });
       }
     } catch (e) {
@@ -244,13 +246,17 @@ class _GuardDashboardState extends State<GuardDashboard> {
           );
         }
 
+        // Sort via LogSortService — Dart equivalent of JS sortFirebaseLogs(logs, 'desc')
+        final sortedDocs = LogSortService.sort(
+          snapshot.data!.docs.toList(),
+          direction: SortDirection.desc,
+        );
         return ListView.builder(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
-          itemCount: snapshot.data!.docs.length,
+          itemCount: sortedDocs.length,
           itemBuilder: (context, index) {
-            final log = snapshot.data!.docs[index].data()
-                as Map<String, dynamic>;
+            final log = sortedDocs[index].data() as Map<String, dynamic>;
             final String type = log['type'] ?? 'ENTRY';
             final String entryType = log['entryType'] ?? '';
 

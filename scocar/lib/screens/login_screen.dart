@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../../main.dart' show themeNotifier, AppTokens;
+import '../main.dart' show themeNotifier, AppTokens;
 import 'log_movement_screen.dart' show activeGuardName;
 
 // ─────────────────────────────────────────────────────────────────────────────

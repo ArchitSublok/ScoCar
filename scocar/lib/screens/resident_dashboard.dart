@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../services/log_sort_service.dart';
 import '../services/notification_service.dart';
 import 'add_vehicle_screen.dart';
-import '../../main.dart' show themeNotifier;
+import '../main.dart' show themeNotifier;
 
 class ResidentDashboard extends StatefulWidget {
   const ResidentDashboard({super.key});
@@ -72,7 +73,7 @@ class _ResidentDashboardState extends State<ResidentDashboard> {
     final String activeFlat = _flatId ?? 'UNKNOWN';
 
     return DefaultTabController(
-      length: 3,
+      length: 4,
       child: Scaffold(
         backgroundColor: theme.scaffoldBackgroundColor,
         appBar: AppBar(
@@ -116,6 +117,7 @@ class _ResidentDashboardState extends State<ResidentDashboard> {
               Tab(icon: Icon(Icons.directions_car), text: 'My Vehicles'),
               Tab(icon: Icon(Icons.gpp_good_rounded), text: 'Gate Approvals'),
               Tab(icon: Icon(Icons.shield_rounded), text: 'Guard On Duty'),
+              Tab(icon: Icon(Icons.history_rounded), text: 'Activity'),
             ],
           ),
         ),
@@ -169,6 +171,7 @@ class _ResidentDashboardState extends State<ResidentDashboard> {
 
             // TAB 3: Guard On Duty
             _buildGuardOnDutyTab(),
+            _ActivityHistoryTab(flatNumber: _flatId ?? ''),
           ],
         ),
       ),
@@ -874,6 +877,240 @@ class _ResidentDashboardState extends State<ResidentDashboard> {
       child: Text(text,
           style: TextStyle(
               color: color, fontWeight: FontWeight.bold, fontSize: 11)),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// _ActivityHistoryTab
+//
+// Queries Firestore `logs` collection filtered by flatNumber.
+// Displays chronological log entries with type badges (ENTRY / EXIT / DELIVERY).
+// Fully theme-aware — works in both dark and light mode.
+// ─────────────────────────────────────────────────────────────────────────────
+class _ActivityHistoryTab extends StatelessWidget {
+  final String flatNumber;
+  const _ActivityHistoryTab({required this.flatNumber});
+
+  // Colour and icon per log type
+  static Color _typeColor(String type) {
+    switch (type.toUpperCase()) {
+      case 'ENTRY'   : return Colors.greenAccent;
+      case 'EXIT'    : return Colors.redAccent;
+      case 'DELIVERY': return Colors.orangeAccent;
+      default        : return Colors.blueAccent;
+    }
+  }
+
+  static IconData _typeIcon(String type) {
+    switch (type.toUpperCase()) {
+      case 'ENTRY'   : return Icons.login_rounded;
+      case 'EXIT'    : return Icons.logout_rounded;
+      case 'DELIVERY': return Icons.local_shipping_rounded;
+      default        : return Icons.swap_vert_rounded;
+    }
+  }
+
+  static String _formatTimestamp(dynamic ts) {
+    if (ts == null) return 'Just now';
+    DateTime dt;
+    if (ts is Timestamp) {
+      dt = ts.toDate();
+    } else {
+      return 'Just now';
+    }
+    final now = DateTime.now();
+    final diff = now.difference(dt);
+    if (diff.inMinutes < 1)  return 'Just now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 24)   return '${diff.inHours}h ago';
+    return '${dt.day}/${dt.month}/${dt.year}  ${dt.hour.toString().padLeft(2,'0')}:${dt.minute.toString().padLeft(2,'0')}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark      = Theme.of(context).brightness == Brightness.dark;
+    final bgColor     = isDark ? const Color(0xFF0A0A1A) : const Color(0xFFF4F6F9);
+    final cardColor   = isDark ? const Color(0xFF141428) : Colors.white;
+    final titleColor  = isDark ? Colors.white            : const Color(0xFF111827);
+    final subColor    = isDark ? Colors.white54          : const Color(0xFF6B7280);
+    final borderColor = isDark ? const Color(0xFF2E3160) : const Color(0xFFE2E8F0);
+    final emptyColor  = isDark ? Colors.white24          : const Color(0xFFCBD5E1);
+
+    if (flatNumber.isEmpty) {
+      return Center(
+        child: Text('Flat number not available.',
+            style: TextStyle(color: emptyColor)),
+      );
+    }
+
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('logs')
+          .where('flatNumber', isEqualTo: flatNumber)
+          .orderBy('timestamp', descending: true)
+          .limit(50)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(
+              child: CircularProgressIndicator(color: Color(0xFF00E5FF)));
+        }
+
+        if (snapshot.hasError) {
+          return Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.error_outline_rounded, color: Colors.redAccent, size: 40),
+                const SizedBox(height: 12),
+                Text('Failed to load activity.\nCheck Firestore index.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: subColor, fontSize: 13)),
+              ],
+            ),
+          );
+        }
+
+        // Apply LogSortService.sort — Dart equivalent of JS sortFirebaseLogs(logs, 'desc')
+        // Handles Timestamp, string, int formats. Newest first.
+        final rawDocs = snapshot.data?.docs ?? [];
+        final docs = LogSortService.sort(rawDocs, direction: SortDirection.desc);
+
+        if (docs.isEmpty) {
+          return Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.history_toggle_off_rounded,
+                    color: emptyColor, size: 56),
+                const SizedBox(height: 16),
+                Text('No activity yet for Flat $flatNumber',
+                    style: TextStyle(
+                        color: titleColor,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold)),
+                const SizedBox(height: 6),
+                Text('Movement, delivery and visitor logs\nwill appear here.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: subColor, fontSize: 13)),
+              ],
+            ),
+          );
+        }
+
+        return ListView.separated(
+          padding         : const EdgeInsets.fromLTRB(16, 16, 16, 32),
+          itemCount       : docs.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 10),
+          itemBuilder     : (_, i) {
+            final data    = docs[i].data() as Map<String, dynamic>;
+            final type    = (data['type'] ?? data['entryType'] ?? 'MOVEMENT')
+                .toString().toUpperCase();
+            final company = (data['company']  ?? data['visitor_name'] ?? '—').toString();
+            final plate   = (data['plateNumber'] ?? '—').toString();
+            final guard   = (data['guardId']  ?? '—').toString();
+            final ts      = data['timestamp'];
+            final accent  = _typeColor(type);
+            final icon    = _typeIcon(type);
+
+            return Container(
+              decoration: BoxDecoration(
+                color       : cardColor,
+                borderRadius: BorderRadius.circular(14),
+                border      : Border.all(color: borderColor),
+              ),
+              child: ListTile(
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                leading: Container(
+                  width : 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color       : accent.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(12),
+                    border      : Border.all(color: accent.withOpacity(0.3)),
+                  ),
+                  child: Icon(icon, color: accent, size: 22),
+                ),
+                title: Row(
+                  children: [
+                    // Type badge
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color       : accent.withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(6),
+                        border      : Border.all(
+                            color: accent.withOpacity(0.3), width: 0.8),
+                      ),
+                      child: Text(
+                        type,
+                        style: TextStyle(
+                          color     : accent,
+                          fontSize  : 10,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.6,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        company,
+                        style: TextStyle(
+                          color     : titleColor,
+                          fontSize  : 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+                subtitle: Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (plate != '—')
+                        Row(children: [
+                          Icon(Icons.directions_car_rounded,
+                              size: 12, color: subColor),
+                          const SizedBox(width: 4),
+                          Text(plate,
+                              style: TextStyle(
+                                  color    : subColor,
+                                  fontSize : 12,
+                                  fontFamily: 'monospace')),
+                        ]),
+                      const SizedBox(height: 3),
+                      Row(
+                        children: [
+                          Icon(Icons.access_time_rounded,
+                              size: 12, color: subColor),
+                          const SizedBox(width: 4),
+                          Text(LogSortService.formatForDisplay(ts),
+                              style: TextStyle(
+                                  color  : subColor, fontSize: 11)),
+                          const Spacer(),
+                          Icon(Icons.shield_outlined,
+                              size: 12, color: subColor),
+                          const SizedBox(width: 4),
+                          Text(guard,
+                              style: TextStyle(
+                                  color: subColor, fontSize: 11)),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
     );
   }
 }
