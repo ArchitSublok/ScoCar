@@ -22,14 +22,12 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   );
 }
 
-// Global theme notifier — allows dark/light mode toggle from anywhere
+// ─── Global theme notifier ────────────────────────────────────────────────────
 final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.system);
 
-/// Toggle between light and dark mode from any screen.
 void toggleTheme() {
-  themeNotifier.value = themeNotifier.value == ThemeMode.dark
-      ? ThemeMode.light
-      : ThemeMode.dark;
+  themeNotifier.value =
+      themeNotifier.value == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark;
 }
 
 void main() async {
@@ -45,6 +43,52 @@ void main() async {
   runApp(const SocCarApp());
 }
 
+// ─── Shared token constants ───────────────────────────────────────────────────
+// All screens pull from this single source of truth so every color, radius,
+// and spacing token changes in one place.
+abstract class AppTokens {
+  // ── Light palette ──────────────────────────────────────────────────────────
+  static const Color lightBg         = Color(0xFFF4F6F9); // off-white app bg
+  static const Color lightSurface    = Color(0xFFFFFFFF); // card / sheet surface
+  static const Color lightBorder     = Color(0xFFCBD5E1); // 1 dp input borders
+  static const Color lightBorderFocus= Color(0xFF1565C0); // focused input ring
+  static const Color lightTextPrimary= Color(0xFF111827); // headings, active labels
+  static const Color lightTextSecond = Color(0xFF4A5568); // body copy ≥4.5:1
+  static const Color lightTextHint   = Color(0xFF6B7280); // placeholders ≥4.5:1
+  static const Color lightFieldFill  = Color(0xFFFFFFFF); // input fill
+  static const Color lightAccent     = Color(0xFF1565C0); // brand blue in light
+  static const Color lightDivider    = Color(0xFFE2E8F0);
+
+  // ── Dark palette ───────────────────────────────────────────────────────────
+  static const Color darkBg          = Color(0xFF0A0A1A);
+  static const Color darkSurface     = Color(0xFF141428);
+  static const Color darkCard        = Color(0xFF1A1D35);
+  static const Color darkBorder      = Color(0xFF2E3160);
+  static const Color darkBorderFocus = Color(0xFF00E5FF);
+  static const Color darkTextPrimary = Colors.white;
+  static const Color darkTextSecond  = Color(0xFFB0B7D4); // white70 equivalent
+  static const Color darkTextHint    = Color(0xFF6B7280);
+  static const Color darkFieldFill   = Color(0xFF1A1D35);
+  static const Color darkAccent      = Color(0xFF00E5FF); // cyan in dark
+  static const Color darkDivider     = Color(0xFF2E3160);
+
+  // ── Modal overlay alphas ───────────────────────────────────────────────────
+  // Semi-transparent so the content behind remains visible.
+  static const Color lightBarrier    = Color(0x66000000); // rgba(0,0,0,0.40)
+  static const Color darkBarrier     = Color(0xB3000000); // rgba(0,0,0,0.70)
+
+  // ── Cyan action button ─────────────────────────────────────────────────────
+  // Same bright cyan works in both modes; text is always black for contrast.
+  static const Color cyanAction      = Color(0xFF00E5FF);
+  static const Color cyanActionText  = Color(0xFF000000);
+
+  // ── Shared radii ───────────────────────────────────────────────────────────
+  static const double radiusInput  = 14;
+  static const double radiusCard   = 16;
+  static const double radiusSheet  = 28;
+  static const double radiusButton = 16;
+}
+
 class SocCarApp extends StatelessWidget {
   const SocCarApp({super.key});
 
@@ -57,131 +101,8 @@ class SocCarApp extends StatelessWidget {
           title: 'SocCar OS',
           debugShowCheckedModeBanner: false,
           themeMode: mode,
-
-          // ── Light theme ─────────────────────────────────────────────
-          theme: ThemeData(
-            useMaterial3: true,
-            brightness: Brightness.light,
-            colorScheme: ColorScheme.fromSeed(
-              seedColor: const Color(0xFF1565C0),
-              brightness: Brightness.light,
-            ),
-            scaffoldBackgroundColor: const Color(0xFFF0F2F8),
-            cardColor: Colors.white,
-            appBarTheme: const AppBarTheme(
-              backgroundColor: Color(0xFF1565C0),
-              foregroundColor: Colors.white,
-              elevation: 0,
-              centerTitle: true,
-            ),
-            inputDecorationTheme: InputDecorationTheme(
-              filled: true,
-              fillColor: Colors.grey.shade100,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: BorderSide(color: Colors.grey.shade300),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: BorderSide(color: Colors.grey.shade300),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: const BorderSide(
-                    color: Color(0xFF1565C0), width: 1.5),
-              ),
-              labelStyle:
-                  TextStyle(color: Colors.grey.shade700, fontSize: 14),
-            ),
-            elevatedButtonTheme: ElevatedButtonThemeData(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF1565C0),
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14)),
-                elevation: 0,
-              ),
-            ),
-            chipTheme: ChipThemeData(
-              backgroundColor: Colors.grey.shade200,
-              labelStyle: const TextStyle(color: Colors.black87),
-              selectedColor: const Color(0xFF1565C0),
-            ),
-            dividerColor: Colors.grey.shade300,
-            textTheme: const TextTheme(
-              bodyMedium: TextStyle(color: Color(0xFF1A1A2E)),
-              bodySmall: TextStyle(color: Colors.black54),
-              titleLarge: TextStyle(
-                  color: Color(0xFF1A1A2E), fontWeight: FontWeight.bold),
-              labelMedium:
-                  TextStyle(color: Colors.black54, fontSize: 12),
-            ),
-          ),
-
-          // ── Dark theme ──────────────────────────────────────────────
-          darkTheme: ThemeData(
-            useMaterial3: true,
-            brightness: Brightness.dark,
-            colorScheme: ColorScheme.fromSeed(
-              seedColor: const Color(0xFF00E5FF),
-              brightness: Brightness.dark,
-              surface: const Color(0xFF0A0A1A),
-              onSurface: Colors.white,
-            ),
-            scaffoldBackgroundColor: const Color(0xFF0A0A1A),
-            cardColor: const Color(0xFF141428),
-            appBarTheme: const AppBarTheme(
-              backgroundColor: Color(0xFF141428),
-              foregroundColor: Colors.white,
-              elevation: 0,
-              centerTitle: true,
-            ),
-            inputDecorationTheme: InputDecorationTheme(
-              filled: true,
-              fillColor: const Color(0xFF1A1D35),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide:
-                    const BorderSide(color: Color(0xFF2E3160)),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide:
-                    const BorderSide(color: Color(0xFF2E3160)),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: const BorderSide(
-                    color: Color(0xFF00E5FF), width: 1.5),
-              ),
-              labelStyle:
-                  const TextStyle(color: Colors.white38, fontSize: 14),
-            ),
-            elevatedButtonTheme: ElevatedButtonThemeData(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF00E5FF),
-                foregroundColor: Colors.black,
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14)),
-                elevation: 0,
-              ),
-            ),
-            chipTheme: const ChipThemeData(
-              backgroundColor: Color(0xFF1A1D35),
-              labelStyle: TextStyle(color: Colors.white70),
-              selectedColor: Color(0xFF00E5FF),
-            ),
-            dividerColor: const Color(0xFF2E3160),
-            textTheme: const TextTheme(
-              bodyMedium: TextStyle(color: Colors.white),
-              bodySmall: TextStyle(color: Colors.white70),
-              titleLarge:
-                  TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-              labelMedium:
-                  TextStyle(color: Colors.white54, fontSize: 12),
-            ),
-          ),
-
+          theme: _buildLightTheme(),
+          darkTheme: _buildDarkTheme(),
           initialRoute: '/',
           routes: {
             '/': (context) => const LandingScreen(),
@@ -193,6 +114,240 @@ class SocCarApp extends StatelessWidget {
           },
         );
       },
+    );
+  }
+
+  // ── LIGHT THEME ─────────────────────────────────────────────────────────────
+  ThemeData _buildLightTheme() {
+    return ThemeData(
+      useMaterial3: true,
+      brightness: Brightness.light,
+
+      colorScheme: const ColorScheme(
+        brightness     : Brightness.light,
+        primary        : AppTokens.lightAccent,
+        onPrimary      : Colors.white,
+        secondary      : AppTokens.cyanAction,
+        onSecondary    : AppTokens.cyanActionText,
+        surface        : AppTokens.lightSurface,
+        onSurface      : AppTokens.lightTextPrimary,
+        error          : Color(0xFFB91C1C),
+        onError        : Colors.white,
+      ),
+
+      scaffoldBackgroundColor: AppTokens.lightBg,
+      cardColor              : AppTokens.lightSurface,
+      dividerColor           : AppTokens.lightDivider,
+
+      // ── AppBar ──────────────────────────────────────────────────────────────
+      appBarTheme: const AppBarTheme(
+        backgroundColor: AppTokens.lightAccent,
+        foregroundColor: Colors.white,
+        elevation      : 0,
+        centerTitle    : true,
+        titleTextStyle : TextStyle(
+          color     : Colors.white,
+          fontSize  : 17,
+          fontWeight: FontWeight.bold,
+          letterSpacing: 0.3,
+        ),
+      ),
+
+      // ── Cards ───────────────────────────────────────────────────────────────
+      cardTheme: CardThemeData(
+        color    : AppTokens.lightSurface,
+        elevation: 0,
+        shape    : RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppTokens.radiusCard),
+          side        : const BorderSide(color: AppTokens.lightBorder),
+        ),
+      ),
+
+      // ── Inputs ──────────────────────────────────────────────────────────────
+      // These apply to any TextField that inherits from the global theme.
+      // Screens that override locally still reference AppTokens.
+      inputDecorationTheme: InputDecorationTheme(
+        filled        : true,
+        fillColor     : AppTokens.lightFieldFill,
+        hintStyle     : const TextStyle(color: AppTokens.lightTextHint, fontSize: 14),
+        labelStyle    : const TextStyle(color: AppTokens.lightTextSecond, fontSize: 14),
+        prefixIconColor: AppTokens.lightAccent,
+        contentPadding: const EdgeInsets.symmetric(vertical: 15, horizontal: 16),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppTokens.radiusInput),
+          borderSide  : const BorderSide(color: AppTokens.lightBorder),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppTokens.radiusInput),
+          borderSide  : const BorderSide(color: AppTokens.lightBorder),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppTokens.radiusInput),
+          borderSide  : const BorderSide(color: AppTokens.lightBorderFocus, width: 2),
+        ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppTokens.radiusInput),
+          borderSide  : const BorderSide(color: Color(0xFFB91C1C)),
+        ),
+        focusedErrorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppTokens.radiusInput),
+          borderSide  : const BorderSide(color: Color(0xFFB91C1C), width: 2),
+        ),
+      ),
+
+      // ── Elevated Button ─────────────────────────────────────────────────────
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: AppTokens.lightAccent,
+          foregroundColor: Colors.white,
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppTokens.radiusButton)),
+          elevation: 0,
+          textStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+        ),
+      ),
+
+      // ── Chip ────────────────────────────────────────────────────────────────
+      chipTheme: const ChipThemeData(
+        backgroundColor : AppTokens.lightDivider,
+        labelStyle      : TextStyle(color: AppTokens.lightTextPrimary, fontSize: 12),
+        selectedColor   : AppTokens.lightAccent,
+        secondaryLabelStyle: TextStyle(color: Colors.white),
+      ),
+
+      // ── TabBar ──────────────────────────────────────────────────────────────
+      tabBarTheme: const TabBarThemeData(
+        indicatorColor      : Colors.white,
+        labelColor          : Colors.white,
+        unselectedLabelColor: Colors.white60,
+      ),
+
+      // ── Text ────────────────────────────────────────────────────────────────
+      textTheme: const TextTheme(
+        bodyLarge  : TextStyle(color: AppTokens.lightTextPrimary, fontSize: 16),
+        bodyMedium : TextStyle(color: AppTokens.lightTextPrimary, fontSize: 14),
+        bodySmall  : TextStyle(color: AppTokens.lightTextSecond,  fontSize: 12),
+        titleLarge : TextStyle(color: AppTokens.lightTextPrimary, fontWeight: FontWeight.bold, fontSize: 20),
+        titleMedium: TextStyle(color: AppTokens.lightTextPrimary, fontWeight: FontWeight.w600, fontSize: 16),
+        labelMedium: TextStyle(color: AppTokens.lightTextSecond,  fontSize: 12),
+        labelSmall : TextStyle(color: AppTokens.lightTextHint,    fontSize: 11),
+      ),
+    );
+  }
+
+  // ── DARK THEME ──────────────────────────────────────────────────────────────
+  ThemeData _buildDarkTheme() {
+    return ThemeData(
+      useMaterial3: true,
+      brightness: Brightness.dark,
+
+      colorScheme: const ColorScheme(
+        brightness     : Brightness.dark,
+        primary        : AppTokens.darkAccent,
+        onPrimary      : Colors.black,
+        secondary      : AppTokens.cyanAction,
+        onSecondary    : AppTokens.cyanActionText,
+        surface        : AppTokens.darkSurface,
+        onSurface      : AppTokens.darkTextPrimary,
+        error          : Color(0xFFF87171),
+        onError        : Colors.black,
+      ),
+
+      scaffoldBackgroundColor: AppTokens.darkBg,
+      cardColor              : AppTokens.darkSurface,
+      dividerColor           : AppTokens.darkDivider,
+
+      // ── AppBar ──────────────────────────────────────────────────────────────
+      appBarTheme: const AppBarTheme(
+        backgroundColor: AppTokens.darkSurface,
+        foregroundColor: Colors.white,
+        elevation      : 0,
+        centerTitle    : true,
+        titleTextStyle : TextStyle(
+          color     : Colors.white,
+          fontSize  : 17,
+          fontWeight: FontWeight.bold,
+          letterSpacing: 0.3,
+        ),
+      ),
+
+      // ── Cards ───────────────────────────────────────────────────────────────
+      cardTheme: CardThemeData(
+        color    : AppTokens.darkSurface,
+        elevation: 0,
+        shape    : RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppTokens.radiusCard),
+          side        : const BorderSide(color: AppTokens.darkBorder),
+        ),
+      ),
+
+      // ── Inputs ──────────────────────────────────────────────────────────────
+      inputDecorationTheme: InputDecorationTheme(
+        filled        : true,
+        fillColor     : AppTokens.darkFieldFill,
+        hintStyle     : const TextStyle(color: AppTokens.darkTextHint, fontSize: 14),
+        labelStyle    : TextStyle(color: AppTokens.darkTextSecond.withOpacity(0.7), fontSize: 14),
+        prefixIconColor: AppTokens.darkAccent,
+        contentPadding: const EdgeInsets.symmetric(vertical: 15, horizontal: 16),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppTokens.radiusInput),
+          borderSide  : const BorderSide(color: AppTokens.darkBorder),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppTokens.radiusInput),
+          borderSide  : const BorderSide(color: AppTokens.darkBorder),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppTokens.radiusInput),
+          borderSide  : const BorderSide(color: AppTokens.darkBorderFocus, width: 2),
+        ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppTokens.radiusInput),
+          borderSide  : const BorderSide(color: Color(0xFFF87171)),
+        ),
+        focusedErrorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppTokens.radiusInput),
+          borderSide  : const BorderSide(color: Color(0xFFF87171), width: 2),
+        ),
+      ),
+
+      // ── Elevated Button ─────────────────────────────────────────────────────
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: AppTokens.cyanAction,
+          foregroundColor: AppTokens.cyanActionText,
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppTokens.radiusButton)),
+          elevation: 0,
+          textStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+        ),
+      ),
+
+      // ── Chip ────────────────────────────────────────────────────────────────
+      chipTheme: ChipThemeData(
+        backgroundColor : AppTokens.darkCard,
+        labelStyle      : const TextStyle(color: AppTokens.darkTextSecond, fontSize: 12),
+        selectedColor   : AppTokens.darkAccent,
+        secondaryLabelStyle: const TextStyle(color: Colors.black),
+      ),
+
+      // ── TabBar ──────────────────────────────────────────────────────────────
+      tabBarTheme: const TabBarThemeData(
+        indicatorColor      : AppTokens.darkAccent,
+        labelColor          : AppTokens.darkAccent,
+        unselectedLabelColor: Color(0xFF6B7280),
+      ),
+
+      // ── Text ────────────────────────────────────────────────────────────────
+      textTheme: const TextTheme(
+        bodyLarge  : TextStyle(color: AppTokens.darkTextPrimary, fontSize: 16),
+        bodyMedium : TextStyle(color: AppTokens.darkTextPrimary, fontSize: 14),
+        bodySmall  : TextStyle(color: AppTokens.darkTextSecond,  fontSize: 12),
+        titleLarge : TextStyle(color: AppTokens.darkTextPrimary, fontWeight: FontWeight.bold, fontSize: 20),
+        titleMedium: TextStyle(color: AppTokens.darkTextPrimary, fontWeight: FontWeight.w600, fontSize: 16),
+        labelMedium: TextStyle(color: AppTokens.darkTextSecond,  fontSize: 12),
+        labelSmall : TextStyle(color: AppTokens.darkTextHint,    fontSize: 11),
+      ),
     );
   }
 }

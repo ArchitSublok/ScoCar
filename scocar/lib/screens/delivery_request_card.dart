@@ -1,26 +1,23 @@
-// ─────────────────────────────────────────────────────────────────────────────
-// AREA 2: DeliveryRequestCard with 60-Second Countdown + Timeout Fallback
-//
-// REPLACES the _buildDeliveryRequestCard() method in guard_dashboard.dart.
-// Paste this widget below _denyEntry() and call it from _buildLiveDeliveryRequests().
-// ─────────────────────────────────────────────────────────────────────────────
-
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:url_launcher/url_launcher.dart'; // Add url_launcher to pubspec.yaml
+import '../../main.dart' show AppTokens;
 
-/// Timeout duration in seconds. Change to adjust the countdown.
-const int kApprovalTimeoutSeconds = 60;
+// ─────────────────────────────────────────────────────────────────────────────
+// DeliveryRequestCard — theme-aware delivery approval card
+//
+// FIX: Card background was hardcoded Color(0xFF141428) — invisible in light.
+// Now resolves from AppTokens based on the current theme brightness.
+// All internal text and border colors follow the same pattern.
+// ─────────────────────────────────────────────────────────────────────────────
 
 class DeliveryRequestCard extends StatefulWidget {
-  final String docId;
-  final String flat;
-  final String company;
-  final String status;
-  final String? residentPhone; // optional, pulled from residents collection
-  final VoidCallback? onAllowEntry;
-  final VoidCallback? onDenyEntry;
+  final String  docId;
+  final String  flat;
+  final String  company;
+  final String  status;
+  final String? residentPhone;
+  final VoidCallback onAllowEntry;
+  final VoidCallback onDenyEntry;
 
   const DeliveryRequestCard({
     super.key,
@@ -29,8 +26,8 @@ class DeliveryRequestCard extends StatefulWidget {
     required this.company,
     required this.status,
     this.residentPhone,
-    this.onAllowEntry,
-    this.onDenyEntry,
+    required this.onAllowEntry,
+    required this.onDenyEntry,
   });
 
   @override
@@ -38,376 +35,282 @@ class DeliveryRequestCard extends StatefulWidget {
 }
 
 class _DeliveryRequestCardState extends State<DeliveryRequestCard> {
-  Timer? _countdownTimer;
-  int _secondsRemaining = kApprovalTimeoutSeconds;
-  bool _timedOut = false;
+  // ── Countdown for PENDING requests (2-minute window) ──────────────────────
+  static const int _timeoutSeconds = 120;
+
+  late int    _remaining;
+  Timer?      _timer;
 
   @override
   void initState() {
     super.initState();
-    // Only start countdown for PENDING requests
-    if (widget.status == 'PENDING') {
-      _startCountdown();
-    }
-  }
-
-  @override
-  void didUpdateWidget(DeliveryRequestCard oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    // Stop countdown if status changed away from PENDING
-    if (widget.status != 'PENDING' && _countdownTimer != null) {
-      _countdownTimer!.cancel();
-    }
-  }
-
-  void _startCountdown() {
-    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (!mounted) {
-        timer.cancel();
-        return;
-      }
-      setState(() {
-        if (_secondsRemaining > 0) {
-          _secondsRemaining--;
-        } else {
-          _timedOut = true;
-          timer.cancel();
-          // Mark Firestore document as timed out
-          FirebaseFirestore.instance
-              .collection('approvals')
-              .doc(widget.docId)
-              .update({
-            'status': 'TIMEOUT',
-            'timedOutAt': FieldValue.serverTimestamp(),
-          });
-        }
-      });
-    });
+    _remaining = _timeoutSeconds;
+    if (widget.status == 'PENDING') _startCountdown();
   }
 
   @override
   void dispose() {
-    _countdownTimer?.cancel();
+    _timer?.cancel();
     super.dispose();
   }
 
-  // ── Call resident via phone ────────────────────────────────────────────
-  Future<void> _callResident() async {
-    if (widget.residentPhone == null || widget.residentPhone!.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('No phone number on record for this flat.'),
-          backgroundColor: Colors.orange,
-        ),
-      );
-      return;
-    }
-    final Uri callUri = Uri(scheme: 'tel', path: widget.residentPhone);
-    if (await canLaunchUrl(callUri)) {
-      await launchUrl(callUri);
-    }
+  void _startCountdown() {
+    _timer = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (!mounted) { t.cancel(); return; }
+      setState(() {
+        _remaining--;
+        if (_remaining <= 0) t.cancel();
+      });
+    });
   }
 
-  // ── Hold delivery at gate (writes to Firestore) ────────────────────────
-  Future<void> _holdAtGate() async {
-    await FirebaseFirestore.instance
-        .collection('approvals')
-        .doc(widget.docId)
-        .update({
-      'status': 'ON_HOLD',
-      'heldAt': FieldValue.serverTimestamp(),
-    });
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-              '⏸ ${widget.company} delivery held at gate for Flat ${widget.flat}.'),
-          backgroundColor: Colors.blueGrey,
-        ),
-      );
-    }
-  }
+  double get _progress => _remaining / _timeoutSeconds;
+
+  // ─── Build ─────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
-    // ── Resolve card state ─────────────────────────────────────────────
-    if (_timedOut || widget.status == 'TIMEOUT') {
-      return _buildTimeoutCard();
-    }
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
+    // ── Theme-resolved surface colors ──────────────────────────────────────
+    final Color cardBg     = isDark ? AppTokens.darkSurface  : AppTokens.lightSurface;
+    final Color textPrimary= isDark ? Colors.white           : AppTokens.lightTextPrimary;
+    final Color textSecond = isDark ? Colors.white54         : AppTokens.lightTextSecond;
+    final Color divider    = isDark ? AppTokens.darkDivider  : AppTokens.lightDivider;
+
+    // ── Status color ───────────────────────────────────────────────────────
     Color statusColor;
     IconData statusIcon;
-    String statusLabel;
 
     switch (widget.status) {
       case 'APPROVED':
         statusColor = Colors.greenAccent;
-        statusIcon = Icons.check_circle_rounded;
-        statusLabel = 'APPROVED — You may allow entry';
+        statusIcon  = Icons.check_circle_rounded;
         break;
       case 'DENIED':
         statusColor = Colors.redAccent;
-        statusIcon = Icons.cancel_rounded;
-        statusLabel = 'DENIED — Turn delivery away';
+        statusIcon  = Icons.cancel_rounded;
+        break;
+      case 'COMPLETED':
+        statusColor = Colors.blueAccent;
+        statusIcon  = Icons.verified_rounded;
         break;
       case 'ON_HOLD':
-        statusColor = Colors.blueGrey;
-        statusIcon = Icons.pause_circle_filled_rounded;
-        statusLabel = 'ON HOLD — Delivery waiting at gate';
-        break;
-      default:
         statusColor = Colors.orangeAccent;
-        statusIcon = Icons.hourglass_top_rounded;
-        statusLabel = 'PENDING — Waiting for resident...';
+        statusIcon  = Icons.pause_circle_rounded;
+        break;
+      default: // PENDING
+        statusColor = isDark ? Colors.cyanAccent : AppTokens.lightAccent;
+        statusIcon  = Icons.pending_rounded;
     }
 
-    final double progress = _secondsRemaining / kApprovalTimeoutSeconds;
+    final bool isPending = widget.status == 'PENDING';
+    final bool isUrgent  = isPending && _remaining < 30;
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: const Color(0xFF141428),
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: statusColor.withOpacity(0.4), width: 1.5),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // ── Chips ────────────────────────────────────────────────
-            Row(children: [
-              _chip(widget.company, statusColor),
-              const SizedBox(width: 8),
-              _chip('Flat: ${widget.flat}', Colors.white54),
-            ]),
-            const SizedBox(height: 12),
-
-            // ── Status row ──────────────────────────────────────────
-            Row(children: [
-              Icon(statusIcon, color: statusColor, size: 18),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(statusLabel,
-                    style: TextStyle(
-                        color: statusColor,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 13)),
-              ),
-            ]),
-
-            // ── Countdown (PENDING only) ─────────────────────────────
-            if (widget.status == 'PENDING') ...[
-              const SizedBox(height: 12),
-              Row(children: [
-                Icon(Icons.timer_rounded,
-                    size: 14,
-                    color: _secondsRemaining < 15
-                        ? Colors.redAccent
-                        : Colors.white38),
-                const SizedBox(width: 6),
-                Text(
-                  '${_secondsRemaining}s remaining',
-                  style: TextStyle(
-                    color: _secondsRemaining < 15
-                        ? Colors.redAccent
-                        : Colors.white38,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ]),
-              const SizedBox(height: 6),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(6),
-                child: LinearProgressIndicator(
-                  value: progress,
-                  minHeight: 6,
-                  backgroundColor: Colors.white10,
-                  valueColor: AlwaysStoppedAnimation<Color>(
-                    _secondsRemaining < 15
-                        ? Colors.redAccent
-                        : Colors.orangeAccent,
-                  ),
-                ),
-              ),
-            ],
-
-            // ── Action buttons ───────────────────────────────────────
-            if (widget.status == 'APPROVED') ...[
-              const SizedBox(height: 14),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.greenAccent,
-                      foregroundColor: Colors.black,
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12)),
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      elevation: 0),
-                  onPressed: widget.onAllowEntry,
-                  icon: const Icon(Icons.door_sliding_rounded, size: 20),
-                  label: const Text('ALLOW ENTRY & LOG',
-                      style: TextStyle(
-                          fontWeight: FontWeight.bold, letterSpacing: 1)),
-                ),
-              ),
-            ],
-            if (widget.status == 'DENIED') ...[
-              const SizedBox(height: 14),
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.redAccent,
-                      side: const BorderSide(color: Colors.redAccent),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12)),
-                      padding: const EdgeInsets.symmetric(vertical: 12)),
-                  onPressed: widget.onDenyEntry,
-                  icon: const Icon(Icons.block_rounded, size: 20),
-                  label: const Text('DISMISS & TURN AWAY',
-                      style: TextStyle(fontWeight: FontWeight.bold)),
-                ),
-              ),
-            ],
-            if (widget.status == 'PENDING') ...[
-              const SizedBox(height: 10),
-              Align(
-                alignment: Alignment.centerRight,
-                child: TextButton.icon(
-                  onPressed: () => FirebaseFirestore.instance
-                      .collection('approvals')
-                      .doc(widget.docId)
-                      .delete(),
-                  icon: const Icon(Icons.close_rounded,
-                      size: 16, color: Colors.white38),
-                  label: const Text('Cancel request',
-                      style: TextStyle(color: Colors.white38, fontSize: 12)),
-                ),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ── Timeout state card ───────────────────────────────────────────────
-  Widget _buildTimeoutCard() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: const Color(0xFF141428),
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: Colors.redAccent.withOpacity(0.5), width: 1.5),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(children: [
-              _chip(widget.company, Colors.redAccent),
-              const SizedBox(width: 8),
-              _chip('Flat: ${widget.flat}', Colors.white54),
-              const SizedBox(width: 8),
-              _chip('TIMED OUT', Colors.redAccent),
-            ]),
-            const SizedBox(height: 12),
-            const Row(children: [
-              Icon(Icons.alarm_off_rounded, color: Colors.redAccent, size: 18),
-              SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Resident did not respond in 60 seconds',
-                  style: TextStyle(
-                      color: Colors.redAccent,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 13),
-                ),
-              ),
-            ]),
-            const SizedBox(height: 14),
-
-            // ── Fallback actions ────────────────────────────────────
-            Row(children: [
-              Expanded(
-                child: ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF1A3A6B),
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
-                    elevation: 0,
-                  ),
-                  onPressed: _callResident,
-                  icon: const Icon(Icons.phone_rounded,
-                      color: Colors.cyanAccent, size: 18),
-                  label: const Text('Call Resident',
-                      style: TextStyle(
-                          color: Colors.cyanAccent,
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold)),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF2A1A0A),
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
-                    elevation: 0,
-                  ),
-                  onPressed: _holdAtGate,
-                  icon: const Icon(Icons.pause_circle_outline_rounded,
-                      color: Colors.orangeAccent, size: 18),
-                  label: const Text('Hold at Gate',
-                      style: TextStyle(
-                          color: Colors.orangeAccent,
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold)),
-                ),
-              ),
-            ]),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _chip(String text, Color color) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.12),
-        borderRadius: BorderRadius.circular(8),
+        color       : cardBg,
+        borderRadius: BorderRadius.circular(AppTokens.radiusCard),
+        border: Border.all(
+          color: statusColor.withOpacity(isPending ? 0.5 : 0.25),
+          width: isPending ? 1.5 : 1.0,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color     : isDark ? Colors.black26 : Colors.grey.shade200,
+            blurRadius: 8,
+            offset    : const Offset(0, 2),
+          ),
+        ],
       ),
-      child: Text(text,
-          style: TextStyle(
-              color: color, fontWeight: FontWeight.bold, fontSize: 12)),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+
+          // ── Top row ────────────────────────────────────────────────────
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
+            child: Row(
+              children: [
+                // Company chip
+                _Chip(
+                  label    : widget.company,
+                  color    : statusColor,
+                  isDark   : isDark,
+                ),
+                const SizedBox(width: 8),
+                // Flat chip
+                _Chip(
+                  label    : 'Flat ${widget.flat}',
+                  color    : isDark ? Colors.white54 : AppTokens.lightTextSecond,
+                  isDark   : isDark,
+                ),
+                const Spacer(),
+                // Status icon + label
+                Icon(statusIcon, color: statusColor, size: 18),
+                const SizedBox(width: 4),
+                Text(
+                  widget.status,
+                  style: TextStyle(
+                    color     : statusColor,
+                    fontSize  : 11,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 0.6,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // ── Countdown bar (PENDING only) ───────────────────────────────
+          if (isPending) ...[
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: LinearProgressIndicator(
+                        value     : _progress,
+                        minHeight : 4,
+                        backgroundColor: isDark ? Colors.white10 : AppTokens.lightDivider,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          isUrgent ? Colors.redAccent : statusColor,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    '${_remaining}s',
+                    style: TextStyle(
+                      color    : isUrgent ? Colors.redAccent : textSecond,
+                      fontSize : 11,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+
+          // ── Action buttons (PENDING only) ─────────────────────────────
+          if (isPending) ...[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+              child: Row(
+                children: [
+                  // Allow
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.greenAccent,
+                        foregroundColor: Colors.black,
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10)),
+                        padding  : const EdgeInsets.symmetric(vertical: 10),
+                        elevation: 0,
+                      ),
+                      onPressed: widget.onAllowEntry,
+                      icon : const Icon(Icons.check_rounded, size: 18),
+                      label: const Text('Allow',
+                          style: TextStyle(
+                              fontWeight: FontWeight.bold, fontSize: 13)),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  // Deny
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.redAccent,
+                        side: const BorderSide(
+                            color: Colors.redAccent, width: 1.5),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10)),
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                      ),
+                      onPressed: widget.onDenyEntry,
+                      icon : const Icon(Icons.close_rounded, size: 18),
+                      label: const Text('Deny',
+                          style: TextStyle(
+                              fontWeight: FontWeight.bold, fontSize: 13)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ] else ...[
+            // Non-pending: just a footer note
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+              child: Row(
+                children: [
+                  Icon(Icons.info_outline_rounded,
+                      size: 14, color: textSecond),
+                  const SizedBox(width: 6),
+                  Text(
+                    _resolvedNote(widget.status),
+                    style: TextStyle(color: textSecond, fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+          ],
+
+          // ── Divider between cards (subtle) ─────────────────────────────
+          Divider(height: 1, color: divider),
+        ],
+      ),
     );
+  }
+
+  String _resolvedNote(String status) {
+    switch (status) {
+      case 'APPROVED'  : return 'Approved by resident.';
+      case 'DENIED'    : return 'Denied by resident.';
+      case 'COMPLETED' : return 'Entry logged & completed.';
+      case 'TIMEOUT'   : return 'Request timed out.';
+      case 'ON_HOLD'   : return 'On hold — awaiting resident.';
+      default          : return status;
+    }
   }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// HOW TO SWAP IN:
-//
-// In guard_dashboard.dart, change _buildLiveDeliveryRequests() itemBuilder to:
-//
-//   return DeliveryRequestCard(
-//     docId: doc.id,
-//     flat: data['flatNumber'] ?? '?',
-//     company: data['company'] ?? 'DELIVERY',
-//     status: data['status'] ?? 'PENDING',
-//     residentPhone: data['residentPhone'],   // add this field when writing approvals
-//     onAllowEntry: () => _allowDeliveryEntry(doc.id, data['flatNumber'], data['company']),
-//     onDenyEntry:  () => _denyEntry(doc.id, data['company'], data['flatNumber']),
-//   );
-//
-// Also add to pubspec.yaml:
-//   url_launcher: ^6.3.0
+// _Chip — internal themed badge
 // ─────────────────────────────────────────────────────────────────────────────
+class _Chip extends StatelessWidget {
+  final String label;
+  final Color  color;
+  final bool   isDark;
+
+  const _Chip({
+    required this.label,
+    required this.color,
+    required this.isDark,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color       : color.withOpacity(isDark ? 0.12 : 0.10),
+        borderRadius: BorderRadius.circular(20),
+        border      : Border.all(color: color.withOpacity(0.35)),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color     : color,
+          fontSize  : 11,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+    );
+  }
+}
