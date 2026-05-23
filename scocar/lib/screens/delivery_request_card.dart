@@ -197,13 +197,14 @@ class _DeliveryRequestCardState extends State<DeliveryRequestCard> {
             const SizedBox(height: 12),
           ],
 
-          // ── Action buttons (PENDING only) ─────────────────────────────
+          // ── Action buttons — vary by status ───────────────────────────
+
+          // PENDING: Allow + Deny side-by-side
           if (isPending) ...[
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
               child: Row(
                 children: [
-                  // Allow
                   Expanded(
                     child: ElevatedButton.icon(
                       style: ElevatedButton.styleFrom(
@@ -211,18 +212,17 @@ class _DeliveryRequestCardState extends State<DeliveryRequestCard> {
                         foregroundColor: Colors.black,
                         shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(10)),
-                        padding  : const EdgeInsets.symmetric(vertical: 10),
+                        padding: const EdgeInsets.symmetric(vertical: 10),
                         elevation: 0,
                       ),
                       onPressed: widget.onAllowEntry,
-                      icon : const Icon(Icons.check_rounded, size: 18),
+                      icon: const Icon(Icons.check_rounded, size: 18),
                       label: const Text('Allow',
                           style: TextStyle(
                               fontWeight: FontWeight.bold, fontSize: 13)),
                     ),
                   ),
                   const SizedBox(width: 10),
-                  // Deny
                   Expanded(
                     child: OutlinedButton.icon(
                       style: OutlinedButton.styleFrom(
@@ -234,7 +234,7 @@ class _DeliveryRequestCardState extends State<DeliveryRequestCard> {
                         padding: const EdgeInsets.symmetric(vertical: 10),
                       ),
                       onPressed: widget.onDenyEntry,
-                      icon : const Icon(Icons.close_rounded, size: 18),
+                      icon: const Icon(Icons.close_rounded, size: 18),
                       label: const Text('Deny',
                           style: TextStyle(
                               fontWeight: FontWeight.bold, fontSize: 13)),
@@ -243,18 +243,106 @@ class _DeliveryRequestCardState extends State<DeliveryRequestCard> {
                 ],
               ),
             ),
-          ] else ...[
-            // Non-pending: just a footer note
+
+          // APPROVED by resident: guard must now physically allow entry
+          ] else if (widget.status == 'APPROVED') ...[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Info banner
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 8),
+                    margin: const EdgeInsets.only(bottom: 10),
+                    decoration: BoxDecoration(
+                      color: Colors.greenAccent.withOpacity(0.10),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                          color: Colors.greenAccent.withOpacity(0.35)),
+                    ),
+                    child: Row(children: [
+                      const Icon(Icons.check_circle_outline_rounded,
+                          size: 14, color: Colors.greenAccent),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Resident approved — tap below to log entry & open gate.',
+                          style: TextStyle(
+                              color: isDark
+                                  ? Colors.greenAccent
+                                  : Colors.green.shade700,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                    ]),
+                  ),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.greenAccent,
+                        foregroundColor: Colors.black,
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10)),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        elevation: 0,
+                      ),
+                      onPressed: widget.onAllowEntry,
+                      icon: const Icon(Icons.door_sliding_rounded, size: 18),
+                      label: const Text('ALLOW ENTRY & LOG',
+                          style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                              letterSpacing: 0.5)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+          // ON_HOLD: allow guard to allow or deny
+          ] else if (widget.status == 'ON_HOLD') ...[
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
               child: Row(
                 children: [
-                  Icon(Icons.info_outline_rounded,
-                      size: 14, color: textSecond),
-                  const SizedBox(width: 6),
-                  Text(
-                    _resolvedNote(widget.status),
-                    style: TextStyle(color: textSecond, fontSize: 12),
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.greenAccent,
+                        foregroundColor: Colors.black,
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10)),
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        elevation: 0,
+                      ),
+                      onPressed: widget.onAllowEntry,
+                      icon: const Icon(Icons.check_rounded, size: 18),
+                      label: const Text('Allow',
+                          style: TextStyle(
+                              fontWeight: FontWeight.bold, fontSize: 13)),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.redAccent,
+                        side: const BorderSide(
+                            color: Colors.redAccent, width: 1.5),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10)),
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                      ),
+                      onPressed: widget.onDenyEntry,
+                      icon: const Icon(Icons.close_rounded, size: 18),
+                      label: const Text('Deny',
+                          style: TextStyle(
+                              fontWeight: FontWeight.bold, fontSize: 13)),
+                    ),
                   ),
                 ],
               ),

@@ -101,10 +101,21 @@ class _GuardDashboardState extends State<GuardDashboard> {
   }
 
   Future<void> _denyEntry(String docId, String flatNumber) async {
+    // Delete the approval doc so it immediately disappears from the live list.
+    // We also set status to DENIED first so the resident dashboard can still
+    // show a brief "denied" state before the doc is removed.
     await FirebaseFirestore.instance
         .collection('approvals')
         .doc(docId)
         .update({'status': 'DENIED'});
+
+    // Small delay so the resident's real-time listener catches the DENIED state,
+    // then delete the document to clean it off the guard's live list.
+    await Future.delayed(const Duration(milliseconds: 800));
+    await FirebaseFirestore.instance
+        .collection('approvals')
+        .doc(docId)
+        .delete();
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -333,9 +344,12 @@ class _GuardDashboardState extends State<GuardDashboard> {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
           .collection('approvals')
-          .where('status',
-              whereIn: ['PENDING', 'APPROVED', 'DENIED', 'TIMEOUT', 'ON_HOLD'])
-          .orderBy('timestamp', descending: true)
+          // Only fetch docs that still need guard attention.
+          // DENIED / COMPLETED / TIMEOUT are excluded — they auto-disappear.
+          // orderBy('timestamp') is intentionally removed: combining whereIn
+          // with orderBy requires a Firestore composite index. We sort
+          // client-side below instead, which works with no index setup.
+          .where('status', whereIn: ['PENDING', 'APPROVED', 'ON_HOLD'])
           .snapshots(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
@@ -378,7 +392,17 @@ class _GuardDashboardState extends State<GuardDashboard> {
           physics: const NeverScrollableScrollPhysics(),
           itemCount: snapshot.data!.docs.length,
           itemBuilder: (context, index) {
-            final doc = snapshot.data!.docs[index];
+            // Sort client-side: newest first
+            final sorted = snapshot.data!.docs.toList()
+              ..sort((a, b) {
+                final tsA = (a.data() as Map<String, dynamic>)['timestamp'];
+                final tsB = (b.data() as Map<String, dynamic>)['timestamp'];
+                if (tsA == null && tsB == null) return 0;
+                if (tsA == null) return 1;
+                if (tsB == null) return -1;
+                return (tsB as Timestamp).compareTo(tsA as Timestamp);
+              });
+            final doc = sorted[index];
             final data = doc.data() as Map<String, dynamic>;
             return DeliveryRequestCard(
               docId: doc.id,

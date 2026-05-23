@@ -181,7 +181,7 @@ class _ResidentDashboardState extends State<ResidentDashboard> {
               ],
             ),
 
-            // TAB 2: Gate Approvals with live OTP + driver profile
+            // TAB 2: Gate Approvals with driver profile
             _buildApprovalsList(activeFlat),
 
             // TAB 3: Guard On Duty
@@ -426,8 +426,6 @@ class _ResidentDashboardState extends State<ResidentDashboard> {
     final String photoUrl   = data['photoUrl'] ?? data['agentPhotoPath'] ?? '';
     final bool isNetworkPhoto = photoUrl.startsWith('http');
     final bool isLocalPhoto   = photoUrl.isNotEmpty && !isNetworkPhoto;
-    // Feature 4: Show OTP to resident
-    final String? otpCode   = data['otpCode'] as String?;
 
     Color statusColor;
     String statusText;
@@ -604,45 +602,6 @@ class _ResidentDashboardState extends State<ResidentDashboard> {
                       _alertSound.stopAlert();
                     },
                   ),
-
-                // Feature 4: OTP display
-                if (otpCode != null && otpCode.isNotEmpty) ...[
-                  const SizedBox(height: 10),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 14, vertical: 10),
-                    decoration: BoxDecoration(
-                      color: Colors.cyanAccent.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(
-                          color: Colors.cyanAccent.withOpacity(0.4)),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.vpn_key_rounded,
-                            color: Colors.cyanAccent, size: 18),
-                        const SizedBox(width: 10),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text('SHARE THIS OTP WITH VISITOR',
-                                style: TextStyle(
-                                    color: Colors.white38,
-                                    fontSize: 10,
-                                    letterSpacing: 1)),
-                            Text(otpCode,
-                                style: const TextStyle(
-                                    color: Colors.cyanAccent,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 22,
-                                    letterSpacing: 6)),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
 
                 // Approve / Deny — only for PENDING
                 if (status == 'PENDING') ...[

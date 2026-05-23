@@ -5,6 +5,7 @@ import 'firebase_options.dart';
 import 'services/notification_service.dart';
 
 import 'screens/camera_registration_screen.dart';
+import 'screens/admin_dashboard.dart';
 import 'screens/landing_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/guard_dashboard.dart';
@@ -98,7 +99,7 @@ class SocCarApp extends StatelessWidget {
       valueListenable: themeNotifier,
       builder: (_, mode, __) {
         return MaterialApp(
-          title: 'SocCar OS',
+          title: 'SocCar',
           debugShowCheckedModeBanner: false,
           themeMode: mode,
           theme: _buildLightTheme(),
@@ -109,6 +110,7 @@ class SocCarApp extends StatelessWidget {
             '/login': (context) => const LoginScreen(),
             '/guard_dashboard': (context) => const GuardDashboard(),
             '/resident_dashboard': (context) => const ResidentDashboard(),
+            '/admin_dashboard': (context) => const AdminDashboard(),
             '/cameras': (_) => const CameraRegistrationScreen(),
             '/detect_vehicle': (context) => const VehicleDetectionScreen(),
           },
