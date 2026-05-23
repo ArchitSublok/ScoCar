@@ -148,7 +148,7 @@ class _GuardDashboardState extends State<GuardDashboard> {
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
           _statColumn('On Duty',         _fetchedGuardName, Colors.greenAccent),
-          Container(width: 1, height: 40, color: Colors.white10),
+          Container(width: 1, height: 40, color: Theme.of(context).dividerColor),
           _statColumn('Terminal Status', 'SECURE',          Colors.cyanAccent),
         ],
       ),
@@ -156,6 +156,7 @@ class _GuardDashboardState extends State<GuardDashboard> {
   }
 
   Widget _statColumn(String label, String value, Color highlight) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Column(
       children: [
         Text(label,
@@ -170,7 +171,7 @@ class _GuardDashboardState extends State<GuardDashboard> {
         const SizedBox(height: 4),
         Text(value,
             style: TextStyle(
-                color     : highlight,
+                color: isDark ? highlight : highlight.withOpacity(0.85),
                 fontWeight: FontWeight.bold,
                 fontSize  : 15)),
       ],
@@ -339,7 +340,7 @@ class _GuardDashboardState extends State<GuardDashboard> {
                         )),
                     const SizedBox(height: 5),
                     Text(
-                      'Type flat + plate manually when camera is offline.',
+                      'Type flat.',
                       style: TextStyle(color: manSub, fontSize: 10.5, height: 1.4),
                     ),
                   ],
@@ -647,11 +648,13 @@ class _GuardDashboardState extends State<GuardDashboard> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    // Resolve icon colours based on AppBar background.
-    // Guard dashboard AppBar is always dark (near-black) regardless of theme.
-    const Color appBarBg      = Color(0xFF0A0A1A);
-    const Color iconColor     = Colors.white70;
-    const Color iconColorSoft = Colors.white54;
+    // Resolve AppBar colours from theme so light mode works correctly.
+    final appBarBg      = Theme.of(context).appBarTheme.backgroundColor
+                          ?? Theme.of(context).colorScheme.surface;
+    final onAppBar      = Theme.of(context).appBarTheme.foregroundColor
+                          ?? Theme.of(context).colorScheme.onSurface;
+    final iconColor     = onAppBar.withOpacity(0.85);
+    final iconColorSoft = onAppBar.withOpacity(0.55);
 
     return DefaultTabController(
       length: 2,
@@ -664,13 +667,12 @@ class _GuardDashboardState extends State<GuardDashboard> {
           elevation      : 0,
           title: Text(
             _guardId != null ? 'Guard: $_guardId' : 'Guard Control Terminal',
-            style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+            style: TextStyle(fontWeight: FontWeight.bold, color: onAppBar),
           ),
           actions: [
             // ── 1. ANPR Camera ──────────────────────────────────────────
-            // Opens VehicleDetectionScreen to auto-log vehicle movements.
             IconButton(
-              icon   : const Icon(Icons.videocam_rounded, color: iconColor),
+              icon   : Icon(Icons.videocam_rounded, color: iconColor),
               tooltip: 'ANPR Vehicle Scan',
               onPressed: () => Navigator.push(
                 context,
@@ -682,7 +684,7 @@ class _GuardDashboardState extends State<GuardDashboard> {
 
             // ── 2. Camera Registration ──────────────────────────────────
             IconButton(
-              icon   : const Icon(Icons.settings_input_component_rounded,
+              icon   : Icon(Icons.settings_input_component_rounded,
                   color: iconColor),
               tooltip: 'Manage Cameras',
               onPressed: () => Navigator.pushNamed(context, '/cameras'),
@@ -706,7 +708,7 @@ class _GuardDashboardState extends State<GuardDashboard> {
 
             // ── 4. Logout ───────────────────────────────────────────────
             IconButton(
-              icon     : const Icon(Icons.logout_rounded, color: iconColorSoft),
+              icon     : Icon(Icons.logout_rounded, color: iconColorSoft),
               tooltip  : 'Logout',
               onPressed: () {
                 if (_guardId != null) {
@@ -727,11 +729,11 @@ class _GuardDashboardState extends State<GuardDashboard> {
               },
             ),
           ],
-          bottom: const TabBar(
-            indicatorColor      : Colors.cyanAccent,
-            labelColor          : Colors.cyanAccent,
-            unselectedLabelColor: Colors.white38,
-            tabs: [
+          bottom: TabBar(
+            indicatorColor      : Theme.of(context).colorScheme.primary,
+            labelColor          : Theme.of(context).colorScheme.primary,
+            unselectedLabelColor: Theme.of(context).colorScheme.onSurface.withOpacity(0.45),
+            tabs: const [
               Tab(icon: Icon(Icons.dashboard_rounded),  text: 'Control'),
               Tab(icon: Icon(Icons.people_alt_rounded), text: 'Inside'),
             ],
@@ -753,8 +755,10 @@ class _GuardDashboardState extends State<GuardDashboard> {
                     builder: (_) => VehicleDetectionScreen(guardId: _guardId),
                   ),
                 ),
-                backgroundColor: const Color(0xFF0E4163),
-                foregroundColor: AppTokens.cyanAction,
+                backgroundColor: Theme.of(context).brightness == Brightness.dark
+                    ? const Color(0xFF0E4163)
+                    : const Color(0xFF0277BD),
+                foregroundColor: Colors.white,
                 elevation      : 6,
                 tooltip        : 'ANPR Vehicle Scan',
                 child          : const Icon(Icons.videocam_rounded, size: 26),
@@ -768,8 +772,10 @@ class _GuardDashboardState extends State<GuardDashboard> {
                   guardId  : _guardId,
                   guardName: _fetchedGuardName,
                 ),
-                backgroundColor: const Color(0xFF2D1A00),
-                foregroundColor: Colors.orangeAccent,
+                backgroundColor: Theme.of(context).brightness == Brightness.dark
+                    ? const Color(0xFF2D1A00)
+                    : const Color(0xFFE65100),
+                foregroundColor: Colors.white,
                 elevation      : 6,
                 tooltip        : 'Manual Movement Log',
                 child          : const Icon(Icons.edit_note_rounded, size: 26),

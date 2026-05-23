@@ -92,10 +92,12 @@ class _ResidentDashboardState extends State<ResidentDashboard> {
       child: Scaffold(
         backgroundColor: theme.scaffoldBackgroundColor,
         appBar: AppBar(
-          title: Text('FLAT $activeFlat',
-              style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold)),
+          title: Text(
+            'FLAT $activeFlat',
+            style: TextStyle(
+                color: theme.colorScheme.onSurface,
+                fontWeight: FontWeight.bold),
+          ),
           backgroundColor: theme.appBarTheme.backgroundColor,
           centerTitle: true,
           elevation: 0,
@@ -108,7 +110,7 @@ class _ResidentDashboardState extends State<ResidentDashboard> {
                   mode == ThemeMode.dark
                       ? Icons.light_mode_rounded
                       : Icons.dark_mode_rounded,
-                  color: Colors.white70,
+                  color: theme.colorScheme.onSurface.withOpacity(0.75),
                 ),
                 tooltip: mode == ThemeMode.dark ? 'Light Mode' : 'Dark Mode',
                 onPressed: () {
@@ -119,16 +121,19 @@ class _ResidentDashboardState extends State<ResidentDashboard> {
               ),
             ),
             IconButton(
-              icon: const Icon(Icons.logout_rounded, color: Colors.white54),
+              icon: Icon(
+                Icons.logout_rounded,
+                color: theme.colorScheme.onSurface.withOpacity(0.55),
+              ),
               onPressed: () =>
                   Navigator.pushReplacementNamed(context, '/'),
             ),
           ],
-          bottom: const TabBar(
-            indicatorColor: Colors.cyanAccent,
-            labelColor: Colors.cyanAccent,
-            unselectedLabelColor: Colors.white38,
-            tabs: [
+          bottom: TabBar(
+            indicatorColor: theme.colorScheme.primary,
+            labelColor: theme.colorScheme.primary,
+            unselectedLabelColor: theme.colorScheme.onSurface.withOpacity(0.45),
+            tabs: const [
               Tab(icon: Icon(Icons.directions_car), text: 'My Vehicles'),
               Tab(icon: Icon(Icons.gpp_good_rounded), text: 'Gate Approvals'),
               Tab(icon: Icon(Icons.shield_rounded), text: 'Guard On Duty'),
@@ -217,10 +222,10 @@ class _ResidentDashboardState extends State<ResidentDashboard> {
             borderRadius: BorderRadius.circular(24),
           ),
           child: Row(children: [
-            const CircleAvatar(
+            CircleAvatar(
               radius: 28,
-              backgroundColor: Colors.white24,
-              child: Icon(Icons.person_rounded, size: 32, color: Colors.white),
+              backgroundColor: Colors.white.withOpacity(0.25),
+              child: const Icon(Icons.person_rounded, size: 32, color: Colors.white),
             ),
             const SizedBox(width: 16),
             Expanded(
@@ -234,8 +239,8 @@ class _ResidentDashboardState extends State<ResidentDashboard> {
                           color: Colors.white)),
                   const SizedBox(height: 3),
                   Text('Apartment: $flatId',
-                      style: const TextStyle(
-                          color: Colors.white60, fontSize: 13)),
+                      style: TextStyle(
+                          color: Colors.white.withOpacity(0.7), fontSize: 13)),
                 ],
               ),
             ),
@@ -281,7 +286,7 @@ class _ResidentDashboardState extends State<ResidentDashboard> {
                   decoration: const BoxDecoration(
                       color: Colors.blueAccent, shape: BoxShape.circle),
                   child: const Icon(Icons.directions_car,
-                      color: Colors.white, size: 20),
+                      color: Colors.white, size: 20), // white on blue bg — intentional
                 ),
                 const SizedBox(width: 14),
                 Expanded(
@@ -677,6 +682,7 @@ class _ResidentDashboardState extends State<ResidentDashboard> {
               child: CircularProgressIndicator(color: Colors.cyanAccent));
         }
 
+        final isDark = Theme.of(context).brightness == Brightness.dark;
         final guards = snapshot.hasData ? snapshot.data!.docs : <DocumentSnapshot>[];
         final onDutyGuards = guards
             .map((d) => d.data() as Map<String, dynamic>)
@@ -689,10 +695,15 @@ class _ResidentDashboardState extends State<ResidentDashboard> {
             Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                gradient: const LinearGradient(
+                gradient: LinearGradient(
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
-                  colors: [Color(0xFF0D2137), Color(0xFF0A3D62)],
+                  colors: isDark
+                      ? const [Color(0xFF0D2137), Color(0xFF0A3D62)]
+                      : [
+                          Theme.of(context).colorScheme.primary.withOpacity(0.12),
+                          Theme.of(context).colorScheme.primary.withOpacity(0.06),
+                        ],
                 ),
                 borderRadius: BorderRadius.circular(24),
                 border: Border.all(
@@ -744,8 +755,12 @@ class _ResidentDashboardState extends State<ResidentDashboard> {
                           onDutyGuards.isEmpty
                               ? 'No guard is currently logged in to the system.'
                               : '${onDutyGuards.length} guard${onDutyGuards.length > 1 ? "s are" : " is"} actively on duty.',
-                          style: const TextStyle(
-                              color: Colors.white60, fontSize: 13),
+                          style: TextStyle(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurface
+                                  .withOpacity(0.65),
+                              fontSize: 13),
                         ),
                       ],
                     ),
@@ -756,18 +771,28 @@ class _ResidentDashboardState extends State<ResidentDashboard> {
             const SizedBox(height: 20),
 
             if (onDutyGuards.isEmpty) ...[
-              const Center(
+              Center(
                 child: Padding(
-                  padding: EdgeInsets.only(top: 40),
+                  padding: const EdgeInsets.only(top: 40),
                   child: Column(
                     children: [
-                      Icon(Icons.person_off_rounded,
-                          size: 64, color: Colors.white12),
-                      SizedBox(height: 12),
+                      Icon(
+                        Icons.person_off_rounded,
+                        size: 64,
+                        color: Theme.of(context)
+                            .colorScheme
+                            .onSurface
+                            .withOpacity(0.15),
+                      ),
+                      const SizedBox(height: 12),
                       Text(
                         'Your gate is currently unmonitored.',
                         style: TextStyle(
-                            color: Colors.white38, fontSize: 14),
+                            color: Theme.of(context)
+                                .colorScheme
+                                .onSurface
+                                .withOpacity(0.4),
+                            fontSize: 14),
                         textAlign: TextAlign.center,
                       ),
                     ],
@@ -775,10 +800,13 @@ class _ResidentDashboardState extends State<ResidentDashboard> {
                 ),
               ),
             ] else ...[
-              const Text(
+              Text(
                 'GUARDS CURRENTLY ON DUTY',
                 style: TextStyle(
-                  color: Colors.white38,
+                  color: Theme.of(context)
+                      .colorScheme
+                      .onSurface
+                      .withOpacity(0.45),
                   fontSize: 11,
                   fontWeight: FontWeight.bold,
                   letterSpacing: 1.2,
@@ -819,8 +847,10 @@ class _ResidentDashboardState extends State<ResidentDashboard> {
                 backgroundColor: Colors.blueAccent.withOpacity(0.2),
                 child: Text(
                   name.isNotEmpty ? name[0].toUpperCase() : 'G',
-                  style: const TextStyle(
-                    color: Colors.white,
+                  style: TextStyle(
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? Colors.white
+                        : Colors.blueAccent.shade700,
                     fontSize: 22,
                     fontWeight: FontWeight.bold,
                   ),
@@ -835,7 +865,8 @@ class _ResidentDashboardState extends State<ResidentDashboard> {
                   decoration: BoxDecoration(
                     color: Colors.greenAccent,
                     shape: BoxShape.circle,
-                     border: Border.all(color: Theme.of(context).cardColor, width: 2),
+                    border: Border.all(
+                        color: Theme.of(context).cardColor, width: 2),
                   ),
                 ),
               ),
@@ -846,15 +877,23 @@ class _ResidentDashboardState extends State<ResidentDashboard> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(name,
-                    style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16)),
+                Text(
+                  name,
+                  style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurface,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16),
+                ),
                 const SizedBox(height: 3),
-                Text('ID: $id',
-                    style: const TextStyle(
-                        color: Colors.white54, fontSize: 12)),
+                Text(
+                  'ID: $id',
+                  style: TextStyle(
+                      color: Theme.of(context)
+                          .colorScheme
+                          .onSurface
+                          .withOpacity(0.5),
+                      fontSize: 12),
+                ),
                 const SizedBox(height: 6),
                 Row(
                   children: [
@@ -885,8 +924,12 @@ class _ResidentDashboardState extends State<ResidentDashboard> {
                     const SizedBox(width: 8),
                     Text(
                       'Since $since',
-                      style: const TextStyle(
-                          color: Colors.white38, fontSize: 11),
+                      style: TextStyle(
+                          color: Theme.of(context)
+                              .colorScheme
+                              .onSurface
+                              .withOpacity(0.4),
+                          fontSize: 11),
                     ),
                   ],
                 ),
@@ -905,14 +948,26 @@ class _ResidentDashboardState extends State<ResidentDashboard> {
     return Container(
       height: 140,
       width: double.infinity,
-      color: const Color(0xFF0D2137),
+      color: Theme.of(context).brightness == Brightness.dark
+          ? const Color(0xFF0D2137)
+          : const Color(0xFFDDE8F0),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.person_rounded, size: 52, color: Colors.white24),
+          Icon(Icons.person_rounded,
+              size: 52,
+              color: Theme.of(context)
+                  .colorScheme
+                  .onSurface
+                  .withOpacity(0.2)),
           const SizedBox(height: 6),
-          const Text('No photo available',
-              style: TextStyle(color: Colors.white24, fontSize: 11)),
+          Text('No photo available',
+              style: TextStyle(
+                  color: Theme.of(context)
+                      .colorScheme
+                      .onSurface
+                      .withOpacity(0.3),
+                  fontSize: 11)),
         ],
       ),
     );

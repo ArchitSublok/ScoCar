@@ -22,7 +22,7 @@ class LandingScreen extends StatelessWidget {
               child: Icon(Icons.qr_code_scanner_rounded, size: 100, color: Colors.cyanAccent),
             ),
             const SizedBox(height: 20),
-            const Text("ScoCar", 
+            const Text("SocCar", 
               style: TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold, letterSpacing: 6)),
             const Text("SOCIETY SECURITY SYSTEMS", 
               style: TextStyle(color: Colors.cyanAccent, fontSize: 12, letterSpacing: 2)),

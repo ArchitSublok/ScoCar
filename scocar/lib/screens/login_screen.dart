@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../main.dart' show themeNotifier, AppTokens;
 import 'log_movement_screen.dart' show activeGuardName;
-import 'society_search_field.dart';  // ← Google Places society picker
+import 'society_search_field.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Role enum — drives the entire login screen state
+// Role enum
 // ─────────────────────────────────────────────────────────────────────────────
 enum _Role { guard, resident, admin }
 
@@ -26,24 +26,20 @@ extension _RoleExt on _Role {
     }
   }
 
-  // The accent colour for each role tab (selected state)
-  Color get accentColor {
+  String get subtitle {
     switch (this) {
-      case _Role.guard:    return AppTokens.cyanAction;       // cyan
-      case _Role.resident: return AppTokens.cyanAction;       // cyan
-      case _Role.admin:    return const Color(0xFFFFB300);    // amber-gold
+      case _Role.guard:    return 'Gate & delivery management';
+      case _Role.resident: return 'Visitor approvals & vehicle logs';
+      case _Role.admin:    return 'Society administration panel';
     }
   }
 
-  // FIX 8: accentText getter removed — was declared but never used anywhere
+  // ALL roles now use the same cyan/blue accent — consistent design
+  Color get accentColor => AppTokens.cyanAction;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Hard-coded admin credentials (single-user admin — stored only in app)
-// Change _kAdminId / _kAdminCode before releasing to production.
-// ─────────────────────────────────────────────────────────────────────────────
 const String _kAdminId   = 'ADMIN';
-const String _kAdminCode = 'ScoCar@admin';
+const String _kAdminCode = 'SocCar@admin';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // LoginScreen
@@ -58,20 +54,19 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen>
     with SingleTickerProviderStateMixin {
 
-  _Role  _role       = _Role.guard;
+  // ── NO role selected by default ──────────────────────────────────────────
+  _Role? _role;
   bool   _isLoading  = false;
   bool   _loginLock  = false;
   bool   _obscureCode = true;
 
-  // Admin — selected society from Google Places picker
   PlaceSuggestion? _selectedSociety;
 
-  final _idCtrl   = TextEditingController();
-  final _codeCtrl = TextEditingController();
-  final _idFocus  = FocusNode();
-  final _codeFocus= FocusNode();
+  final _idCtrl    = TextEditingController();
+  final _codeCtrl  = TextEditingController();
+  final _idFocus   = FocusNode();
+  final _codeFocus = FocusNode();
 
-  // Subtle slide animation when switching roles
   late AnimationController _slideCtrl;
   late Animation<Offset>   _slideAnim;
 
@@ -79,14 +74,11 @@ class _LoginScreenState extends State<LoginScreen>
   void initState() {
     super.initState();
     _slideCtrl = AnimationController(
-      vsync   : this,
-      duration: const Duration(milliseconds: 260),
-    );
+        vsync: this, duration: const Duration(milliseconds: 280));
     _slideAnim = Tween<Offset>(
-      begin: const Offset(0.04, 0),
+      begin: const Offset(0, 0.06),
       end  : Offset.zero,
     ).animate(CurvedAnimation(parent: _slideCtrl, curve: Curves.easeOut));
-    _slideCtrl.forward();
   }
 
   @override
@@ -99,32 +91,26 @@ class _LoginScreenState extends State<LoginScreen>
     super.dispose();
   }
 
-  // ─── Role switch ────────────────────────────────────────────────────────────
-
-  void _switchRole(_Role r) {
-    if (_isLoading || r == _role) return;
+  void _selectRole(_Role r) {
+    if (_isLoading) return;
     setState(() {
       _role            = r;
       _idCtrl.clear();
       _codeCtrl.clear();
       _obscureCode     = true;
-      _selectedSociety = null;   // reset society on tab switch
+      _selectedSociety = null;
     });
-    _slideCtrl
-      ..reset()
-      ..forward();
+    _slideCtrl..reset()..forward();
     FocusScope.of(context).unfocus();
   }
 
-  // ─── Auth logic ─────────────────────────────────────────────────────────────
-
+  // ─── Auth ───────────────────────────────────────────────────────────────────
   Future<void> _login() async {
-    if (_loginLock) return;
+    if (_loginLock || _role == null) return;
     _loginLock = true;
 
     final String inputId = _idCtrl.text.trim().toUpperCase();
     final String code    = _codeCtrl.text.trim();
-
     FocusScope.of(context).unfocus();
 
     if (inputId.isEmpty || code.isEmpty) {
@@ -136,7 +122,6 @@ class _LoginScreenState extends State<LoginScreen>
     setState(() => _isLoading = true);
 
     try {
-      // ── ADMIN auth (local credential check — no Firestore round-trip) ────
       if (_role == _Role.admin) {
         if (_selectedSociety == null) {
           _toast('Please select a society / apartment first.', Colors.orange);
@@ -150,26 +135,21 @@ class _LoginScreenState extends State<LoginScreen>
           _loginLock = false;
           return;
         }
-        // Admin OK — pass selected society as route argument
         if (mounted) {
           _grantAccess('✅ Admin access granted — ${_selectedSociety!.mainText}');
           await Future.delayed(const Duration(milliseconds: 600));
           if (mounted) {
-            Navigator.pushReplacementNamed(
-              context,
-              '/admin_dashboard',
-              arguments: {
-                'societyName'  : _selectedSociety!.mainText,
-                'societyAddress': _selectedSociety!.fullDescription,
-                'placeId'      : _selectedSociety!.placeId,
-              },
-            );
+            Navigator.pushReplacementNamed(context, '/admin_dashboard',
+                arguments: {
+                  'societyName'   : _selectedSociety!.mainText,
+                  'societyAddress': _selectedSociety!.fullDescription,
+                  'placeId'       : _selectedSociety!.placeId,
+                });
           }
         }
         return;
       }
 
-      // ── Guard auth ───────────────────────────────────────────────────────
       DocumentSnapshot? userDoc;
       Map<String, dynamic>? data;
 
@@ -186,10 +166,7 @@ class _LoginScreenState extends State<LoginScreen>
         }
         userDoc = snap.docs.first;
         data    = userDoc.data() as Map<String, dynamic>?;
-      }
-
-      // ── Resident auth ────────────────────────────────────────────────────
-      else {
+      } else {
         final snap = await FirebaseFirestore.instance
             .collection('residents')
             .doc(inputId)
@@ -240,9 +217,7 @@ class _LoginScreenState extends State<LoginScreen>
         if (mounted) {
           Navigator.pushReplacementNamed(
             context,
-            _role == _Role.guard
-                ? '/guard_dashboard'
-                : '/resident_dashboard',
+            _role == _Role.guard ? '/guard_dashboard' : '/resident_dashboard',
             arguments: inputId,
           );
         }
@@ -264,10 +239,10 @@ class _LoginScreenState extends State<LoginScreen>
       content: Text(msg,
           style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
       backgroundColor: Colors.green.shade700,
-      duration: const Duration(milliseconds: 800),
-      behavior: SnackBarBehavior.floating,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      margin: const EdgeInsets.all(16),
+      duration       : const Duration(milliseconds: 800),
+      behavior       : SnackBarBehavior.floating,
+      shape          : RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      margin         : const EdgeInsets.all(16),
     ));
   }
 
@@ -276,7 +251,7 @@ class _LoginScreenState extends State<LoginScreen>
     ScaffoldMessenger.of(context)
       ..clearSnackBars()
       ..showSnackBar(SnackBar(
-        content: Text(msg,
+        content : Text(msg,
             style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
         backgroundColor: bg,
         behavior       : SnackBarBehavior.floating,
@@ -287,21 +262,19 @@ class _LoginScreenState extends State<LoginScreen>
   }
 
   // ─── Build ──────────────────────────────────────────────────────────────────
-
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isDark       = Theme.of(context).brightness == Brightness.dark;
+    final Color bgColor     = isDark ? AppTokens.darkBg         : AppTokens.lightBg;
+    final Color cardColor   = isDark ? AppTokens.darkSurface     : AppTokens.lightSurface;
+    final Color cardBorder  = isDark ? AppTokens.darkBorder      : AppTokens.lightBorder;
+    final Color titleColor  = isDark ? AppTokens.darkTextPrimary : AppTokens.lightTextPrimary;
+    final Color subColor    = isDark ? AppTokens.darkAccent      : AppTokens.lightAccent;
+    final Color shadowColor = isDark ? Colors.black38            : const Color(0xFFCBD5E1);
 
-    final Color bgColor      = isDark ? AppTokens.darkBg        : AppTokens.lightBg;
-    final Color cardColor    = isDark ? AppTokens.darkSurface    : AppTokens.lightSurface;
-    final Color cardBorder   = isDark ? AppTokens.darkBorder     : AppTokens.lightBorder;
-    final Color titleColor   = isDark ? AppTokens.darkTextPrimary: AppTokens.lightTextPrimary;
-    final Color subtitleColor= isDark ? AppTokens.darkAccent     : AppTokens.lightAccent;
-    final Color shadowColor  = isDark ? Colors.black38           : const Color(0xFFCBD5E1);
-
-    // Admin-specific accent overrides
-    final bool   isAdmin     = _role == _Role.admin;
-    final Color  roleAccent  = _role.accentColor;
+    final Color roleAccent  = _role?.accentColor ?? AppTokens.cyanAction;
+    final bool  hasRole     = _role != null;
+    final bool  isAdmin     = _role == _Role.admin;
 
     return Scaffold(
       backgroundColor: bgColor,
@@ -318,12 +291,9 @@ class _LoginScreenState extends State<LoginScreen>
                     : Icons.dark_mode_rounded,
                 color: isDark ? Colors.white54 : AppTokens.lightTextSecond,
               ),
-              tooltip: 'Toggle Theme',
-              onPressed: () {
-                themeNotifier.value = mode == ThemeMode.dark
-                    ? ThemeMode.light
-                    : ThemeMode.dark;
-              },
+              tooltip  : 'Toggle Theme',
+              onPressed: () => themeNotifier.value =
+                  mode == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark,
             ),
           ),
         ],
@@ -336,7 +306,7 @@ class _LoginScreenState extends State<LoginScreen>
             child: Column(
               children: [
 
-                // ── Logo ──────────────────────────────────────────────────
+                // ── Logo ────────────────────────────────────────────────
                 Hero(
                   tag: 'logo',
                   child: Icon(
@@ -348,7 +318,7 @@ class _LoginScreenState extends State<LoginScreen>
                   ),
                 ),
                 const SizedBox(height: 8),
-                Text('ScoCar',
+                Text('SocCar',
                     style: TextStyle(
                       color        : titleColor,
                       fontSize     : 22,
@@ -359,9 +329,11 @@ class _LoginScreenState extends State<LoginScreen>
                   duration: const Duration(milliseconds: 200),
                   child: Text(
                     key: ValueKey(_role),
-                    isAdmin ? 'ADMIN CONTROL PANEL' : 'SECURE ACCESS TERMINAL',
+                    hasRole
+                        ? (isAdmin ? 'ADMIN CONTROL PANEL' : 'SECURE ACCESS TERMINAL')
+                        : 'SELECT YOUR ROLE TO CONTINUE',
                     style: TextStyle(
-                      color        : roleAccent,
+                      color        : subColor,
                       fontSize     : 10,
                       letterSpacing: 2,
                       fontWeight   : FontWeight.w600,
@@ -370,219 +342,211 @@ class _LoginScreenState extends State<LoginScreen>
                 ),
                 const SizedBox(height: 32),
 
-                // ── Card ──────────────────────────────────────────────────
+                // ── Card ────────────────────────────────────────────────
                 Container(
-                  padding: const EdgeInsets.all(24),
+                  padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
                     color       : cardColor,
                     borderRadius: BorderRadius.circular(24),
-                    border      : Border.all(
-                      color: isAdmin
-                          ? roleAccent.withValues(alpha: 0.4)
-                          : cardBorder,
-                      width: isAdmin ? 1.5 : 1.0,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        blurRadius  : 30,
-                        color       : isAdmin
-                            ? roleAccent.withValues(alpha: 0.12)
-                            : shadowColor,
-                      )
-                    ],
+                    border      : Border.all(color: cardBorder),
+                    boxShadow   : [BoxShadow(blurRadius: 30, color: shadowColor)],
                   ),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
 
-                      // ── Three-role toggle ────────────────────────────
-                      Row(children: [
-                        Expanded(
+                      // ── VERTICAL role selector ────────────────────────
+                      Column(
+                        children: _Role.values.map((r) => Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
                           child: _RoleChip(
-                            role    : _Role.guard,
-                            selected: _role == _Role.guard,
+                            role    : r,
+                            selected: _role == r,
                             isDark  : isDark,
-                            onTap   : () => _switchRole(_Role.guard),
+                            onTap   : () => _selectRole(r),
                           ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: _RoleChip(
-                            role    : _Role.resident,
-                            selected: _role == _Role.resident,
-                            isDark  : isDark,
-                            onTap   : () => _switchRole(_Role.resident),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: _RoleChip(
-                            role    : _Role.admin,
-                            selected: _role == _Role.admin,
-                            isDark  : isDark,
-                            onTap   : () => _switchRole(_Role.admin),
-                          ),
-                        ),
-                      ]),
-
-                      // Admin warning banner
-                      if (isAdmin) ...[
-                        const SizedBox(height: 14),
-                        Container(
-                          width  : double.infinity,
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 8),
-                          decoration: BoxDecoration(
-                            color       : const Color(0xFFFFB300).withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(
-                                color: const Color(0xFFFFB300).withValues(alpha: 0.4)),
-                          ),
-                          child: const Row(children: [
-                            Icon(Icons.warning_amber_rounded,
-                                color: Color(0xFFFFB300), size: 15),
-                            SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                'Restricted access — authorised personnel only.',
-                                style: TextStyle(
-                                    color     : Color(0xFFFFB300),
-                                    fontSize  : 11,
-                                    fontWeight: FontWeight.w600),
-                              ),
-                            ),
-                          ]),
-                        ),
-                      ],
-
-                      const SizedBox(height: 24),
-
-                      // ── Animated form fields (slide on role switch) ───
-                      SlideTransition(
-                        position: _slideAnim,
-                        child: FadeTransition(
-                          opacity: _slideCtrl,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-
-                              // ── Society picker — Admin only ──────────
-                              if (_role == _Role.admin) ...[
-                                SocietySearchField(
-                                  isDark     : isDark,
-                                  accentColor: roleAccent,
-                                  onSelected : (suggestion) {
-                                    setState(() =>
-                                        _selectedSociety = suggestion);
-                                  },
-                                ),
-                                const SizedBox(height: 16),
-                              ],
-
-                              // ID field
-                              _buildField(
-                                controller : _idCtrl,
-                                focusNode  : _idFocus,
-                                label      : _roleIdLabel,
-                                hint       : _roleIdHint,
-                                icon       : _role.icon,
-                                inputAction: TextInputAction.next,
-                                capitalize : TextCapitalization.characters,
-                                onSubmitted: (_) =>
-                                    FocusScope.of(context).requestFocus(_codeFocus),
-                                isDark     : isDark,
-                                accentColor: roleAccent,
-                              ),
-                              const SizedBox(height: 14),
-
-                              // Access Code field
-                              _buildField(
-                                controller : _codeCtrl,
-                                focusNode  : _codeFocus,
-                                label      : 'Access Code',
-                                hint       : 'Enter access code',
-                                icon       : Icons.lock_rounded,
-                                inputAction: TextInputAction.done,
-                                obscure    : _obscureCode,
-                                onSubmitted: (_) {
-                                  if (!_isLoading) _login();
-                                },
-                                isDark     : isDark,
-                                accentColor: roleAccent,
-                                suffixIcon : IconButton(
-                                  icon: Icon(
-                                    _obscureCode
-                                        ? Icons.visibility_off_rounded
-                                        : Icons.visibility_rounded,
-                                    size : 20,
-                                    color: isDark
-                                        ? Colors.white38
-                                        : AppTokens.lightTextHint,
-                                  ),
-                                  onPressed: () => setState(
-                                      () => _obscureCode = !_obscureCode),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
+                        )).toList(),
                       ),
 
-                      const SizedBox(height: 28),
+                      // ── Form — only visible after role selected ───────
+                      AnimatedSize(
+                        duration: const Duration(milliseconds: 300),
+                        curve   : Curves.easeInOut,
+                        child   : hasRole
+                            ? SlideTransition(
+                                position: _slideAnim,
+                                child: FadeTransition(
+                                  opacity: _slideCtrl,
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
 
-                      // ── Authenticate button ───────────────────────────
-                      SizedBox(
-                        width : double.infinity,
-                        height: 56,
-                        child : ElevatedButton(
-                          onPressed: _isLoading ? null : _login,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor        : roleAccent,
-                            foregroundColor        : Colors.black,
-                            disabledBackgroundColor: roleAccent.withValues(alpha: 0.3),
-                            shape: RoundedRectangleBorder(
-                                borderRadius:
-                                    BorderRadius.circular(AppTokens.radiusButton)),
-                            elevation: 0,
-                          ),
-                          child: _isLoading
-                              ? const SizedBox(
-                                  width : 24, height: 24,
-                                  child : CircularProgressIndicator(
-                                      color: Colors.black, strokeWidth: 2.5))
-                              : Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Icon(_role.icon, size: 18, color: Colors.black),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      isAdmin
-                                          ? 'ENTER ADMIN PANEL'
-                                          : 'AUTHENTICATE',
-                                      style: const TextStyle(
-                                        fontSize     : 15,
-                                        fontWeight   : FontWeight.w900,
-                                        letterSpacing: 1.3,
-                                        color        : Colors.black,
+                                      // Divider
+                                      Padding(
+                                        padding: const EdgeInsets.symmetric(vertical: 16),
+                                        child: Row(children: [
+                                          Expanded(child: Divider(
+                                              color: isDark ? Colors.white12 : Colors.grey.shade200)),
+                                          Padding(
+                                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                                            child: Text('ENTER CREDENTIALS',
+                                                style: TextStyle(
+                                                  color   : isDark ? Colors.white24 : Colors.grey.shade400,
+                                                  fontSize: 9,
+                                                  letterSpacing: 1.5,
+                                                  fontWeight: FontWeight.w600,
+                                                )),
+                                          ),
+                                          Expanded(child: Divider(
+                                              color: isDark ? Colors.white12 : Colors.grey.shade200)),
+                                        ]),
                                       ),
-                                    ),
-                                  ],
+
+                                      // Society picker — Admin only
+                                      if (isAdmin) ...[
+                                        SocietySearchField(
+                                          isDark     : isDark,
+                                          accentColor: roleAccent,
+                                          onSelected : (s) =>
+                                              setState(() => _selectedSociety = s),
+                                        ),
+                                        const SizedBox(height: 14),
+                                        // Admin restricted banner
+                                        Container(
+                                          width  : double.infinity,
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 12, vertical: 8),
+                                          decoration: BoxDecoration(
+                                            color       : roleAccent.withOpacity(0.08),
+                                            borderRadius: BorderRadius.circular(10),
+                                            border: Border.all(
+                                                color: roleAccent.withOpacity(0.3)),
+                                          ),
+                                          child: Row(children: [
+                                            Icon(Icons.warning_amber_rounded,
+                                                color: roleAccent, size: 15),
+                                            const SizedBox(width: 8),
+                                            Expanded(
+                                              child: Text(
+                                                'Restricted — authorised personnel only.',
+                                                style: TextStyle(
+                                                  color    : roleAccent,
+                                                  fontSize : 11,
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                              ),
+                                            ),
+                                          ]),
+                                        ),
+                                        const SizedBox(height: 14),
+                                      ],
+
+                                      // ID field
+                                      _buildField(
+                                        controller : _idCtrl,
+                                        focusNode  : _idFocus,
+                                        label      : _roleIdLabel,
+                                        hint       : _roleIdHint,
+                                        icon       : _role!.icon,
+                                        inputAction: TextInputAction.next,
+                                        capitalize : TextCapitalization.characters,
+                                        onSubmitted: (_) => FocusScope.of(context)
+                                            .requestFocus(_codeFocus),
+                                        isDark     : isDark,
+                                        accentColor: roleAccent,
+                                      ),
+                                      const SizedBox(height: 14),
+
+                                      // Access Code field
+                                      _buildField(
+                                        controller : _codeCtrl,
+                                        focusNode  : _codeFocus,
+                                        label      : 'Access Code',
+                                        hint       : 'Enter access code',
+                                        icon       : Icons.lock_rounded,
+                                        inputAction: TextInputAction.done,
+                                        obscure    : _obscureCode,
+                                        onSubmitted: (_) {
+                                          if (!_isLoading) _login();
+                                        },
+                                        isDark     : isDark,
+                                        accentColor: roleAccent,
+                                        suffixIcon : IconButton(
+                                          icon: Icon(
+                                            _obscureCode
+                                                ? Icons.visibility_off_rounded
+                                                : Icons.visibility_rounded,
+                                            size : 20,
+                                            color: isDark
+                                                ? Colors.white38
+                                                : AppTokens.lightTextHint,
+                                          ),
+                                          onPressed: () => setState(
+                                              () => _obscureCode = !_obscureCode),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 24),
+
+                                      // Authenticate button
+                                      SizedBox(
+                                        width : double.infinity,
+                                        height: 54,
+                                        child : ElevatedButton(
+                                          onPressed: _isLoading ? null : _login,
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor        : roleAccent,
+                                            foregroundColor        : Colors.black,
+                                            disabledBackgroundColor: roleAccent.withOpacity(0.3),
+                                            shape: RoundedRectangleBorder(
+                                                borderRadius: BorderRadius.circular(
+                                                    AppTokens.radiusButton)),
+                                            elevation: 0,
+                                          ),
+                                          child: _isLoading
+                                              ? const SizedBox(
+                                                  width : 22, height: 22,
+                                                  child : CircularProgressIndicator(
+                                                      color: Colors.black, strokeWidth: 2.5))
+                                              : Row(
+                                                  mainAxisAlignment: MainAxisAlignment.center,
+                                                  children: [
+                                                    Icon(_role!.icon,
+                                                        size: 18, color: Colors.black),
+                                                    const SizedBox(width: 8),
+                                                    Text(
+                                                      isAdmin
+                                                          ? 'ENTER ADMIN PANEL'
+                                                          : 'AUTHENTICATE',
+                                                      style: const TextStyle(
+                                                        fontSize     : 15,
+                                                        fontWeight   : FontWeight.w900,
+                                                        letterSpacing: 1.3,
+                                                        color        : Colors.black,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
-                        ),
+                              )
+                            : const SizedBox.shrink(),
                       ),
                     ],
                   ),
                 ),
 
                 const SizedBox(height: 16),
-
-                // Footer hint
                 Text(
-                  isAdmin
-                      ? 'Admin session is not tracked in Firestore.'
-                      : 'Contact your society office if you need access.',
+                  hasRole
+                      ? (isAdmin
+                          ? 'Welcome to the Admin section.'
+                          : 'Contact your society office if you need access.')
+                      : 'Tap a role above to get started.',
                   style: TextStyle(
-                      color  : isDark ? Colors.white24 : Colors.grey.shade400,
+                      color   : isDark ? Colors.white24 : Colors.grey.shade400,
                       fontSize: 11),
                   textAlign: TextAlign.center,
                 ),
@@ -594,13 +558,12 @@ class _LoginScreenState extends State<LoginScreen>
     );
   }
 
-  // ─── Dynamic label / hint for ID field ──────────────────────────────────────
-
   String get _roleIdLabel {
     switch (_role) {
       case _Role.guard:    return 'Guard ID';
       case _Role.resident: return 'Flat Number';
       case _Role.admin:    return 'Admin ID';
+      case null:           return 'ID';
     }
   }
 
@@ -609,10 +572,9 @@ class _LoginScreenState extends State<LoginScreen>
       case _Role.guard:    return 'e.g. GUARD1';
       case _Role.resident: return 'e.g. A101';
       case _Role.admin:    return 'Enter admin ID';
+      case null:           return '';
     }
   }
-
-  // ─── Field builder ──────────────────────────────────────────────────────────
 
   Widget _buildField({
     required TextEditingController controller,
@@ -642,8 +604,7 @@ class _LoginScreenState extends State<LoginScreen>
       textCapitalization: capitalize,
       textInputAction   : inputAction,
       onSubmitted       : onSubmitted,
-      style             : TextStyle(
-          color: textColor, fontSize: 15, fontWeight: FontWeight.w500),
+      style             : TextStyle(color: textColor, fontSize: 15, fontWeight: FontWeight.w500),
       decoration: InputDecoration(
         labelText : label,
         hintText  : hint,
@@ -672,7 +633,7 @@ class _LoginScreenState extends State<LoginScreen>
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// _RoleChip — three-way role toggle button
+// _RoleChip — vertical full-width role card
 // ─────────────────────────────────────────────────────────────────────────────
 class _RoleChip extends StatelessWidget {
   final _Role        role;
@@ -689,45 +650,94 @@ class _RoleChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final Color accent     = role.accentColor;
-    final Color idleBorder = isDark ? Colors.white24     : AppTokens.lightBorder;
-    final Color idleText   = isDark ? Colors.white54     : AppTokens.lightTextSecond;
-    final Color idleIcon   = isDark ? Colors.white38     : AppTokens.lightTextSecond;
-    final Color idleFill   = isDark ? Colors.transparent : AppTokens.lightBg;
+    // All roles use the same cyan/blue accent — consistent blue phase
+    final Color accent     = AppTokens.cyanAction;
+    final Color idleBorder = isDark ? Colors.white12    : const Color(0xFFE2E8F0);
+    final Color idleText   = isDark ? Colors.white70    : AppTokens.lightTextPrimary;
+    final Color idleSubText= isDark ? Colors.white38    : AppTokens.lightTextSecond;
+    final Color idleFill   = isDark ? const Color(0xFF141428) : Colors.white;
 
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 220),
-        padding : const EdgeInsets.symmetric(vertical: 12),
+        duration : const Duration(milliseconds: 220),
+        width    : double.infinity,
+        padding  : const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
         decoration: BoxDecoration(
-          color       : selected ? accent : idleFill,
+          color       : selected ? accent.withOpacity(0.12) : idleFill,
           borderRadius: BorderRadius.circular(AppTokens.radiusInput),
           border: Border.all(
             color: selected ? accent : idleBorder,
-            width: selected ? 2.0 : 1.5,
+            width: selected ? 2.0 : 1.0,
           ),
           boxShadow: selected
               ? [BoxShadow(
-                  color    : accent.withValues(alpha: 0.28),
-                  blurRadius: 8,
+                  color    : accent.withOpacity(0.18),
+                  blurRadius: 10,
                   offset   : const Offset(0, 3))]
               : null,
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
+        child: Row(
           children: [
-            Icon(role.icon,
+            // Role icon in a circle
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              width : 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color       : selected
+                    ? accent.withOpacity(0.18)
+                    : (isDark ? Colors.white.withOpacity(0.08) : const Color(0xFFF1F5F9)),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(
+                role.icon,
                 size : 20,
-                color: selected ? Colors.black : idleIcon),
-            const SizedBox(height: 4),
-            Text(role.label,
-                style: TextStyle(
-                  color     : selected ? Colors.black : idleText,
-                  fontWeight: FontWeight.bold,
-                  fontSize  : 11,
-                  letterSpacing: 0.3,
-                )),
+                color: selected ? accent : idleSubText,
+              ),
+            ),
+            const SizedBox(width: 14),
+            // Label + subtitle
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(role.label,
+                      style: TextStyle(
+                        color     : selected ? accent : idleText,
+                        fontWeight: FontWeight.bold,
+                        fontSize  : 14,
+                        letterSpacing: 0.3,
+                      )),
+                  const SizedBox(height: 2),
+                  Text(role.subtitle,
+                      style: TextStyle(
+                        color  : selected
+                            ? accent.withOpacity(0.7)
+                            : idleSubText,
+                        fontSize: 11,
+                      )),
+                ],
+              ),
+            ),
+            // Selection indicator
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              width : 20,
+              height: 20,
+              decoration: BoxDecoration(
+                shape      : BoxShape.circle,
+                color      : selected ? accent : Colors.transparent,
+                border     : Border.all(
+                  color: selected ? accent : idleBorder,
+                  width: 1.5,
+                ),
+              ),
+              child: selected
+                  ? const Icon(Icons.check_rounded,
+                      size: 13, color: Colors.black)
+                  : null,
+            ),
           ],
         ),
       ),

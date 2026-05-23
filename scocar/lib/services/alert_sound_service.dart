@@ -3,63 +3,66 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// AlertSoundService
+// AlertSoundService  —  Repeating beep alert for 60 seconds
 //
-// Plays a repeating beep alert for exactly 60 seconds when a new gate
-// approval request arrives on the Resident Dashboard.
+// Uses the bundled  assets/sounds/beep.wav  file.
+// Requires in pubspec.yaml:
+//   dependencies:
+//     audioplayers: ^6.0.0
 //
-// Usage:
-//   await AlertSoundService().startAlert();   // begin beeping
-//   AlertSoundService().stopAlert();           // stop immediately
-//
-// The service auto-stops after 60 seconds even if stopAlert() is not called.
+//   flutter:
+//     assets:
+//       - assets/sounds/beep.wav
 // ─────────────────────────────────────────────────────────────────────────────
 class AlertSoundService {
   static final AlertSoundService _instance = AlertSoundService._internal();
   factory AlertSoundService() => _instance;
   AlertSoundService._internal();
 
-  final AudioPlayer _player  = AudioPlayer();
-  Timer?            _autoStopTimer;
-  Timer?            _beepTimer;
-  bool              _isPlaying = false;
+  // Fresh player per alert session — avoids state bugs from reuse
+  AudioPlayer? _player;
+  Timer?       _autoStopTimer;
+  Timer?       _beepTimer;
+  bool         _isPlaying = false;
 
-  static const int _alertDurationSeconds = 60;
-  static const int _beepIntervalSeconds  = 2; // beep every 2 seconds
+  static const int    _alertDurationSeconds = 60;
+  static const int    _beepIntervalSeconds  = 2;
+  // Path is RELATIVE to assets/ — do NOT prefix with 'assets/'
+  static const String _beepAsset           = 'sounds/beep.wav';
 
-  /// Start the 60-second repeating alert beep.
+  /// Start the 60-second repeating beep.
   /// Safe to call multiple times — only one alert runs at a time.
   Future<void> startAlert() async {
-    if (_isPlaying) return; // already alerting
+    if (_isPlaying) return;
     _isPlaying = true;
 
-    try {
-      // Play the built-in notification sound using AudioPlayer
-      // Uses a short beep URL that works without any asset file
-      await _playBeep();
+    // Create a fresh AudioPlayer for this session
+    _player = AudioPlayer();
+    await _player!.setVolume(1.0);
 
-      // Repeat beep every 2 seconds
-      _beepTimer = Timer.periodic(
-        const Duration(seconds: _beepIntervalSeconds),
-        (_) => _playBeep(),
-      );
+    // Play immediately on first call
+    await _playBeep();
 
-      // Auto-stop after 60 seconds no matter what
-      _autoStopTimer = Timer(
-        const Duration(seconds: _alertDurationSeconds),
-        stopAlert,
-      );
-    } catch (e) {
-      debugPrint('AlertSoundService: audio error: $e');
-      _isPlaying = false;
-    }
+    // Repeat every 2 seconds
+    _beepTimer = Timer.periodic(
+      const Duration(seconds: _beepIntervalSeconds),
+      (_) => _playBeep(),
+    );
+
+    // Auto-stop after exactly 60 seconds
+    _autoStopTimer = Timer(
+      const Duration(seconds: _alertDurationSeconds),
+      stopAlert,
+    );
   }
 
-  /// Stop the alert immediately (called when resident taps Approve/Deny).
+  /// Stop immediately — call when resident taps Approve / Deny / timeout.
   void stopAlert() {
     _beepTimer?.cancel();
     _autoStopTimer?.cancel();
-    _player.stop();
+    _player?.stop();
+    _player?.dispose();
+    _player    = null;
     _isPlaying = false;
   }
 
@@ -67,21 +70,14 @@ class AlertSoundService {
 
   Future<void> _playBeep() async {
     try {
-      // Short notification beep — hosted CDN, no asset file needed
-      await _player.play(
-        UrlSource(
-          'https://www.soundjay.com/buttons/sounds/beep-01a.mp3',
-        ),
-        volume: 1.0,
-      );
+      // AssetSource path is relative to the assets/ folder
+      await _player?.play(AssetSource(_beepAsset));
     } catch (e) {
-      // Silently ignore playback errors — alert still works via UI
       debugPrint('AlertSoundService: beep error: $e');
     }
   }
 
   void dispose() {
     stopAlert();
-    _player.dispose();
   }
 }
