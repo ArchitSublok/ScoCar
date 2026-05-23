@@ -3,16 +3,15 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/log_sort_service.dart';
 import 'log_movement_screen.dart' show activeGuardName;
 import '../services/notification_service.dart';
-import '../main.dart' show themeNotifier;
+import '../main.dart' show AppTokens, themeNotifier;
 
 import 'discrepancy_alert_overlay.dart';
 import 'delivery_request_card.dart';
-import 'unified_entry_form.dart';          // ← new unified form
+import 'unified_entry_form.dart';
 import 'active_visitors_tab.dart';
 import 'camera_registration_screen.dart';
-
-// NOTE: fast_delivery_entry_form.dart and log_movement_screen.dart imports
-// have been intentionally removed — functionality merged into UnifiedEntryForm.
+import 'vehicle_detection_screen.dart';
+import 'manual_movement_sheet.dart';   // ← Manual movement backup option
 
 class GuardDashboard extends StatefulWidget {
   const GuardDashboard({super.key});
@@ -23,10 +22,10 @@ class GuardDashboard extends StatefulWidget {
 
 class _GuardDashboardState extends State<GuardDashboard> {
   String? _guardId;
-  bool _tokenSaved = false;
-  String _fetchedGuardName = 'Guard On Duty';
+  bool    _tokenSaved         = false;
+  String  _fetchedGuardName   = 'Guard On Duty';
 
-  // ─── Lifecycle ────────────────────────────────────────────────────────────
+  // ── Lifecycle ─────────────────────────────────────────────────────────────
 
   Future<void> _fetchGuardProfile(String guardId) async {
     try {
@@ -34,15 +33,15 @@ class _GuardDashboardState extends State<GuardDashboard> {
           .collection('guards')
           .doc(guardId)
           .get();
-
       if (doc.exists && doc.data() != null) {
         final data = doc.data()!;
         setState(() {
-          _fetchedGuardName = data['guardName'] ?? data['name'] ?? 'Guard On Duty';
+          _fetchedGuardName =
+              data['guardName'] ?? data['name'] ?? 'Guard On Duty';
         });
       }
     } catch (e) {
-      debugPrint("Error fetching guard profile: $e");
+      debugPrint('Guard profile fetch error: $e');
     }
   }
 
@@ -60,75 +59,59 @@ class _GuardDashboardState extends State<GuardDashboard> {
     }
   }
 
-  // ─── Delivery request actions ─────────────────────────────────────────────
+  // ── Delivery request actions ───────────────────────────────────────────────
 
-  Future<void> _allowDeliveryEntry(
-      String docId, String flatNumber) async {
+  Future<void> _allowDeliveryEntry(String docId, String flatNumber) async {
     await FirebaseFirestore.instance
         .collection('approvals')
         .doc(docId)
         .update({
-      'status': 'COMPLETED',
+      'status'     : 'COMPLETED',
       'completedAt': FieldValue.serverTimestamp(),
     });
 
     await FirebaseFirestore.instance.collection('logs').add({
-      'type': 'ENTRY',
-      'entryType': 'Delivery',
-      'company': 'DELIVERY',
-      'flatNumber': flatNumber,
-      'plateNumber': '— DELIVERY —',
-      'guardId': _guardId ?? 'GUARD',
-      'guardName': _fetchedGuardName, // 👈 FIXED: Changed from activeGuardName
+      'type'        : 'ENTRY',
+      'entryType'   : 'Delivery',
+      'company'     : 'DELIVERY',
+      'flatNumber'  : flatNumber,
+      'plateNumber' : '— DELIVERY —',
+      'guardId'     : _guardId ?? 'GUARD',
+      'guardName'   : _fetchedGuardName,
       'vehicleModel': 'Unknown',
-      'driverName': 'Delivery Agent',
-      'driverPic':
-          'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=300',
-      'otpCode': null,
-      'timestamp': FieldValue.serverTimestamp(),
+      'driverName'  : 'Delivery Agent',
+      'driverPic'   : 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=300',
+      'otpCode'     : null,
+      'timestamp'   : FieldValue.serverTimestamp(),
     });
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(
-            '✅ Delivery to $flatNumber — Entry logged & gate cleared.'),
+        content: Text('✅ Delivery to $flatNumber — Entry logged & gate cleared.'),
         backgroundColor: Colors.green.shade700,
         behavior: SnackBarBehavior.floating,
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ));
     }
   }
 
   Future<void> _denyEntry(String docId, String flatNumber) async {
-    // Delete the approval doc so it immediately disappears from the live list.
-    // We also set status to DENIED first so the resident dashboard can still
-    // show a brief "denied" state before the doc is removed.
     await FirebaseFirestore.instance
         .collection('approvals')
         .doc(docId)
         .update({'status': 'DENIED'});
-
-    // Small delay so the resident's real-time listener catches the DENIED state,
-    // then delete the document to clean it off the guard's live list.
-    await Future.delayed(const Duration(milliseconds: 800));
-    await FirebaseFirestore.instance
-        .collection('approvals')
-        .doc(docId)
-        .delete();
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text('🚫 Delivery to $flatNumber — Turned away.'),
         backgroundColor: Colors.red.shade700,
         behavior: SnackBarBehavior.floating,
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ));
     }
   }
 
-  // ─── Reusable widgets ─────────────────────────────────────────────────────
+  // ── Reusable sub-widgets ───────────────────────────────────────────────────
 
   Widget _sectionHeader(String title) {
     return Padding(
@@ -142,7 +125,7 @@ class _GuardDashboardState extends State<GuardDashboard> {
                   ?.color
                   ?.withOpacity(0.7) ??
               Colors.white70,
-          fontSize: 13,
+          fontSize  : 13,
           fontWeight: FontWeight.w700,
           letterSpacing: 0.8,
         ),
@@ -150,23 +133,23 @@ class _GuardDashboardState extends State<GuardDashboard> {
     );
   }
 
+  // ── Live stats banner ──────────────────────────────────────────────────────
+
   Widget _buildLiveStats() {
     return Container(
-      margin: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+      margin : const EdgeInsets.fromLTRB(20, 20, 20, 0),
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
+        color       : Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(16),
-        border:
-            Border.all(color: Theme.of(context).dividerColor),
+        border      : Border.all(color: Theme.of(context).dividerColor),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          // 👈 FIXED: Changed from activeGuardName to _fetchedGuardName
-          _statColumn('On Duty', _fetchedGuardName, Colors.greenAccent),
+          _statColumn('On Duty',         _fetchedGuardName, Colors.greenAccent),
           Container(width: 1, height: 40, color: Colors.white10),
-          _statColumn('Terminal Status', 'SECURE', Colors.cyanAccent),
+          _statColumn('Terminal Status', 'SECURE',          Colors.cyanAccent),
         ],
       ),
     );
@@ -187,43 +170,276 @@ class _GuardDashboardState extends State<GuardDashboard> {
         const SizedBox(height: 4),
         Text(value,
             style: TextStyle(
-                color: highlight,
+                color     : highlight,
                 fontWeight: FontWeight.bold,
-                fontSize: 15)),
+                fontSize  : 15)),
       ],
     );
   }
 
-  // ── Main Entry Button ──────────────────────────────────────────────────────
+  // ── Vehicle movement section — ANPR camera + Manual backup ────────────────
+  // Both options live side-by-side so guards always have a fallback.
+  // ANPR: automatic plate reading via VehicleDetectionScreen.
+  // Manual: hand-typed log via ManualMovementSheet (for power/camera outages).
+
+  Widget _buildVehicleMovementSection() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    // Card colours
+    final anprBg  = isDark ? const Color(0xFF0D1F2D) : const Color(0xFFE8F4FD);
+    final anprBd  = isDark ? const Color(0xFF1A3A50) : const Color(0xFFB3D9F5);
+    final anprTit = isDark ? const Color(0xFF7DD3FC) : const Color(0xFF0369A1);
+    final anprSub = isDark ? const Color(0xFF4A90AA) : const Color(0xFF5B9CBD);
+
+    final manBg   = isDark ? const Color(0xFF1A1200) : const Color(0xFFFFFBE6);
+    final manBd   = isDark ? const Color(0xFF3A2E00) : const Color(0xFFFFE082);
+    final manTit  = isDark ? Colors.orangeAccent      : const Color(0xFFE65100);
+    final manSub  = isDark ? const Color(0xFF8A7040)  : const Color(0xFF8D6E63);
+    final arrowCol= isDark ? Colors.white24           : Colors.grey.shade400;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Row(
+        children: [
+
+          // ── ANPR Card (left / primary) ─────────────────────────────────
+          Expanded(
+            flex: 3,
+            child: GestureDetector(
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                    builder: (_) => VehicleDetectionScreen(guardId: _guardId)),
+              ),
+              child: Container(
+                padding    : const EdgeInsets.all(16),
+                decoration : BoxDecoration(
+                  color       : anprBg,
+                  borderRadius: BorderRadius.circular(18),
+                  border      : Border.all(color: anprBd, width: 1.5),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Icon row
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Container(
+                          width : 44, height: 44,
+                          decoration: BoxDecoration(
+                            color       : AppTokens.cyanAction.withOpacity(0.15),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Icon(
+                            Icons.videocam_rounded,
+                            color: AppTokens.cyanAction, size: 24,
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 7, vertical: 3),
+                          decoration: BoxDecoration(
+                            color       : AppTokens.cyanAction.withOpacity(0.12),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(
+                                color: AppTokens.cyanAction.withOpacity(0.3)),
+                          ),
+                          child: const Text('AUTO',
+                              style: TextStyle(
+                                  color      : AppTokens.cyanAction,
+                                  fontSize   : 9,
+                                  fontWeight : FontWeight.bold,
+                                  letterSpacing: 0.5)),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Text('ANPR\nCAMERA',
+                        style: TextStyle(
+                          color        : anprTit,
+                          fontWeight   : FontWeight.bold,
+                          fontSize     : 13,
+                          letterSpacing: 0.6,
+                          height       : 1.3,
+                        )),
+                    const SizedBox(height: 5),
+                    Text(
+                      'Scan plate — entry/exit logged automatically.',
+                      style: TextStyle(color: anprSub, fontSize: 10.5, height: 1.4),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+
+          const SizedBox(width: 10),
+
+          // ── Manual Movement Card (right / backup) ─────────────────────
+          Expanded(
+            flex: 3,
+            child: GestureDetector(
+              onTap: () => ManualMovementSheet.show(
+                context,
+                guardId  : _guardId,
+                guardName: _fetchedGuardName,
+              ),
+              child: Container(
+                padding    : const EdgeInsets.all(16),
+                decoration : BoxDecoration(
+                  color       : manBg,
+                  borderRadius: BorderRadius.circular(18),
+                  border      : Border.all(color: manBd, width: 1.5),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Icon row
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Container(
+                          width : 44, height: 44,
+                          decoration: BoxDecoration(
+                            color       : Colors.orangeAccent.withOpacity(0.15),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Icon(
+                            Icons.edit_note_rounded,
+                            color: Colors.orangeAccent, size: 24,
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 7, vertical: 3),
+                          decoration: BoxDecoration(
+                            color       : Colors.orangeAccent.withOpacity(0.12),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(
+                                color: Colors.orangeAccent.withOpacity(0.35)),
+                          ),
+                          child: const Text('BACKUP',
+                              style: TextStyle(
+                                  color      : Colors.orangeAccent,
+                                  fontSize   : 9,
+                                  fontWeight : FontWeight.bold,
+                                  letterSpacing: 0.5)),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Text('MANUAL\nENTRY',
+                        style: TextStyle(
+                          color        : manTit,
+                          fontWeight   : FontWeight.bold,
+                          fontSize     : 13,
+                          letterSpacing: 0.6,
+                          height       : 1.3,
+                        )),
+                    const SizedBox(height: 5),
+                    Text(
+                      'Type flat + plate manually when camera is offline.',
+                      style: TextStyle(color: manSub, fontSize: 10.5, height: 1.4),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── ANPR card (full-width, kept for the FAB and backward compat) ────────────
+  Widget _buildAnprCard() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cardBg  = isDark ? const Color(0xFF0D1F2D) : const Color(0xFFE8F4FD);
+    final border  = isDark ? const Color(0xFF1A3A50)  : const Color(0xFFB3D9F5);
+    final titleCol= isDark ? const Color(0xFF7DD3FC)  : const Color(0xFF0369A1);
+    final subCol  = isDark ? const Color(0xFF4A90AA)  : const Color(0xFF5B9CBD);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: GestureDetector(
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(
+              builder: (_) => VehicleDetectionScreen(guardId: _guardId)),
+        ),
+        child: Container(
+          width  : double.infinity,
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            color       : cardBg,
+            borderRadius: BorderRadius.circular(20),
+            border      : Border.all(color: border, width: 1.5),
+          ),
+          child: Row(children: [
+            Container(
+              width: 56, height: 56,
+              decoration: BoxDecoration(
+                color       : AppTokens.cyanAction.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: const Icon(Icons.videocam_rounded,
+                  color: AppTokens.cyanAction, size: 28),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('ANPR AUTO-LOG',
+                      style: TextStyle(
+                          color        : titleCol,
+                          fontWeight   : FontWeight.bold,
+                          fontSize     : 14,
+                          letterSpacing: 0.8)),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Point camera at a number plate — vehicle ENTRY/EXIT logged automatically.',
+                    style: TextStyle(color: subCol, fontSize: 11.5, height: 1.45),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            Icon(Icons.arrow_forward_ios_rounded,
+                color: isDark ? Colors.white24 : const Color(0xFFB3D9F5),
+                size : 16),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  // ── Main entry button (Delivery / Visitor) ────────────────────────────────
 
   Widget _buildUnifiedEntryButton() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: SizedBox(
-        width: double.infinity,
+        width : double.infinity,
         height: 58,
-        child: ElevatedButton.icon(
+        child : ElevatedButton.icon(
           style: ElevatedButton.styleFrom(
             backgroundColor: Colors.cyanAccent,
             foregroundColor: Colors.black,
             padding: const EdgeInsets.symmetric(vertical: 16),
-            shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16)),
-            elevation: 6,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            elevation  : 6,
             shadowColor: Colors.cyanAccent.withOpacity(0.35),
           ),
-          onPressed: () => UnifiedEntryForm.show(
-            context,
-            guardId: _guardId,
-          ),
-          icon: const Icon(Icons.add_circle_rounded,
-              color: Colors.black, size: 22),
+          onPressed: () => UnifiedEntryForm.show(context, guardId: _guardId),
+          icon : const Icon(Icons.add_circle_rounded, color: Colors.black, size: 22),
           label: const Text(
-            'NEW ENTRY LOG',
+            'DELIVERY / VISITOR ENTRY',
             style: TextStyle(
-              fontWeight: FontWeight.w900,
-              letterSpacing: 1.2,
-              fontSize: 15,
+              fontWeight  : FontWeight.w900,
+              letterSpacing: 1.1,
+              fontSize    : 14,
             ),
           ),
         ),
@@ -231,20 +447,19 @@ class _GuardDashboardState extends State<GuardDashboard> {
     );
   }
 
-  // ── Recent Logs Stream ─────────────────────────────────────────────────────
+  // ── Recent logs stream ─────────────────────────────────────────────────────
 
   Widget _buildLogsStream() {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
           .collection('logs')
           .orderBy('timestamp', descending: true)
-          .limit(5)
+          .limit(6)
           .snapshots(),
       builder: (context, snapshot) {
         if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
           return Padding(
-            padding:
-                const EdgeInsets.symmetric(vertical: 12, horizontal: 20),
+            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 20),
             child: Text(
               'No recent logs recorded.',
               style: TextStyle(
@@ -257,57 +472,81 @@ class _GuardDashboardState extends State<GuardDashboard> {
           );
         }
 
-        // Sort via LogSortService — Dart equivalent of JS sortFirebaseLogs(logs, 'desc')
         final sortedDocs = LogSortService.sort(
           snapshot.data!.docs.toList(),
           direction: SortDirection.desc,
         );
+
         return ListView.builder(
           shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: sortedDocs.length,
+          physics   : const NeverScrollableScrollPhysics(),
+          itemCount : sortedDocs.length,
           itemBuilder: (context, index) {
-            final log = sortedDocs[index].data() as Map<String, dynamic>;
-            final String type = log['type'] ?? 'ENTRY';
+            final log      = sortedDocs[index].data() as Map<String, dynamic>;
+            final String type      = log['type']      ?? 'ENTRY';
             final String entryType = log['entryType'] ?? '';
+            final bool   isAnpr    = log['source']    == 'ANPR_CAMERA';
 
             final String subtitle = [
-              if (entryType.isNotEmpty) entryType,
-              if (log['driverName'] != null) log['driverName'] as String,
+              if (isAnpr) '📷 ANPR',
+              if (entryType.isNotEmpty && !isAnpr) entryType,
+              if (log['driverName'] != null)
+                log['driverName'] as String,
               if ((log['plateNumber'] ?? '').isNotEmpty &&
                   log['plateNumber'] != '— DELIVERY —')
                 log['plateNumber'] as String,
             ].join(' · ');
 
+            final Color typeColor = type == 'ENTRY'
+                ? Colors.greenAccent
+                : Colors.orangeAccent;
+
             return ListTile(
               contentPadding:
                   const EdgeInsets.symmetric(horizontal: 20, vertical: 2),
               leading: Container(
-                width: 36,
+                width : 36,
                 height: 36,
                 decoration: BoxDecoration(
-                  color: (type == 'ENTRY'
-                          ? Colors.greenAccent
-                          : Colors.orangeAccent)
-                      .withOpacity(0.12),
+                  color       : typeColor.withOpacity(0.12),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Icon(
                   type == 'ENTRY'
                       ? Icons.login_rounded
                       : Icons.logout_rounded,
-                  color: type == 'ENTRY'
-                      ? Colors.greenAccent
-                      : Colors.orangeAccent,
-                  size: 18,
+                  color: typeColor,
+                  size : 18,
                 ),
               ),
-              title: Text(
-                log['company'] ?? log['flatNumber'] ?? '—',
-                style: TextStyle(
-                    color: Theme.of(context).textTheme.bodyMedium?.color,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600),
+              title: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      log['company'] ?? log['flatNumber'] ?? '—',
+                      style: TextStyle(
+                          color     : Theme.of(context).textTheme.bodyMedium?.color,
+                          fontSize  : 14,
+                          fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                  if (isAnpr)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color       : AppTokens.cyanAction.withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(6),
+                        border      : Border.all(
+                            color: AppTokens.cyanAction.withOpacity(0.3)),
+                      ),
+                      child: const Text('ANPR',
+                          style: TextStyle(
+                              color    : AppTokens.cyanAction,
+                              fontSize : 9,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 0.5)),
+                    ),
+                ],
               ),
               subtitle: subtitle.isNotEmpty
                   ? Text(
@@ -338,49 +577,40 @@ class _GuardDashboardState extends State<GuardDashboard> {
     );
   }
 
-  // ── Live Delivery Requests ─────────────────────────────────────────────────
+  // ── Live delivery requests ─────────────────────────────────────────────────
 
   Widget _buildLiveDeliveryRequests() {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
           .collection('approvals')
-          // Only fetch docs that still need guard attention.
-          // DENIED / COMPLETED / TIMEOUT are excluded — they auto-disappear.
-          // orderBy('timestamp') is intentionally removed: combining whereIn
-          // with orderBy requires a Firestore composite index. We sort
-          // client-side below instead, which works with no index setup.
-          .where('status', whereIn: ['PENDING', 'APPROVED', 'ON_HOLD'])
+          .where('status',
+              whereIn: ['PENDING', 'APPROVED', 'DENIED', 'TIMEOUT', 'ON_HOLD'])
+          .orderBy('timestamp', descending: true)
           .snapshots(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Padding(
             padding: EdgeInsets.all(24),
             child: Center(
-                child:
-                    CircularProgressIndicator(color: Colors.cyanAccent)),
+                child: CircularProgressIndicator(color: Colors.cyanAccent)),
           );
         }
 
         if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
           return Padding(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
             child: Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                color: Theme.of(context).cardColor,
+                color       : Theme.of(context).cardColor,
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                    color: Theme.of(context).dividerColor),
+                border      : Border.all(color: Theme.of(context).dividerColor),
               ),
               child: Center(
                 child: Text(
                   'No active delivery requests.',
                   style: TextStyle(
-                      color: Theme.of(context)
-                          .textTheme
-                          .bodySmall
-                          ?.color),
+                      color: Theme.of(context).textTheme.bodySmall?.color),
                 ),
               ),
             ),
@@ -389,30 +619,20 @@ class _GuardDashboardState extends State<GuardDashboard> {
 
         return ListView.builder(
           shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: snapshot.data!.docs.length,
+          physics   : const NeverScrollableScrollPhysics(),
+          itemCount : snapshot.data!.docs.length,
           itemBuilder: (context, index) {
-            // Sort client-side: newest first
-            final sorted = snapshot.data!.docs.toList()
-              ..sort((a, b) {
-                final tsA = (a.data() as Map<String, dynamic>)['timestamp'];
-                final tsB = (b.data() as Map<String, dynamic>)['timestamp'];
-                if (tsA == null && tsB == null) return 0;
-                if (tsA == null) return 1;
-                if (tsB == null) return -1;
-                return (tsB as Timestamp).compareTo(tsA as Timestamp);
-              });
-            final doc = sorted[index];
+            final doc  = snapshot.data!.docs[index];
             final data = doc.data() as Map<String, dynamic>;
             return DeliveryRequestCard(
-              docId: doc.id,
-              flat: data['flatNumber'] ?? '?',
-              company: data['company'] ?? 'DELIVERY',
-              status: data['status'] ?? 'PENDING',
+              docId        : doc.id,
+              flat         : data['flatNumber'] ?? '?',
+              company      : data['company']    ?? 'DELIVERY',
+              status       : data['status']     ?? 'PENDING',
               residentPhone: data['residentPhone'],
-              onAllowEntry: () =>
+              onAllowEntry : () =>
                   _allowDeliveryEntry(doc.id, data['flatNumber'] ?? ''),
-              onDenyEntry: () =>
+              onDenyEntry  : () =>
                   _denyEntry(doc.id, data['flatNumber'] ?? ''),
             );
           },
@@ -421,34 +641,54 @@ class _GuardDashboardState extends State<GuardDashboard> {
     );
   }
 
-  // ─── Build ────────────────────────────────────────────────────────────────
+  // ── Build ─────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    // Resolve icon colours based on AppBar background.
+    // Guard dashboard AppBar is always dark (near-black) regardless of theme.
+    const Color appBarBg      = Color(0xFF0A0A1A);
+    const Color iconColor     = Colors.white70;
+    const Color iconColorSoft = Colors.white54;
+
     return DefaultTabController(
       length: 2,
       child: Scaffold(
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         appBar: AppBar(
+          backgroundColor: appBarBg,
+          foregroundColor: Colors.white,
+          centerTitle    : true,
+          elevation      : 0,
           title: Text(
-            _guardId != null
-                ? 'Guard: $_guardId'
-                : 'Guard Control Terminal',
-            style: const TextStyle(
-                fontWeight: FontWeight.bold, color: Colors.white),
+            _guardId != null ? 'Guard: $_guardId' : 'Guard Control Terminal',
+            style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
           ),
-          backgroundColor:
-              Theme.of(context).appBarTheme.backgroundColor,
-          centerTitle: true,
-          elevation: 0,
           actions: [
+            // ── 1. ANPR Camera ──────────────────────────────────────────
+            // Opens VehicleDetectionScreen to auto-log vehicle movements.
             IconButton(
-              icon:
-                  const Icon(Icons.videocam_rounded, color: Colors.white70),
-              tooltip: 'Manage Cameras',
-              onPressed: () =>
-                  Navigator.pushNamed(context, '/cameras'),
+              icon   : const Icon(Icons.videocam_rounded, color: iconColor),
+              tooltip: 'ANPR Vehicle Scan',
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => VehicleDetectionScreen(guardId: _guardId),
+                ),
+              ),
             ),
+
+            // ── 2. Camera Registration ──────────────────────────────────
+            IconButton(
+              icon   : const Icon(Icons.settings_input_component_rounded,
+                  color: iconColor),
+              tooltip: 'Manage Cameras',
+              onPressed: () => Navigator.pushNamed(context, '/cameras'),
+            ),
+
+            // ── 3. Theme Toggle ─────────────────────────────────────────
             ValueListenableBuilder<ThemeMode>(
               valueListenable: themeNotifier,
               builder: (_, mode, __) => IconButton(
@@ -456,20 +696,18 @@ class _GuardDashboardState extends State<GuardDashboard> {
                   mode == ThemeMode.dark
                       ? Icons.light_mode_rounded
                       : Icons.dark_mode_rounded,
-                  color: Colors.white70,
+                  color: iconColor,
                 ),
-                tooltip:
-                    mode == ThemeMode.dark ? 'Light Mode' : 'Dark Mode',
-                onPressed: () {
-                  themeNotifier.value = mode == ThemeMode.dark
-                      ? ThemeMode.light
-                      : ThemeMode.dark;
-                },
+                tooltip: mode == ThemeMode.dark ? 'Light Mode' : 'Dark Mode',
+                onPressed: () => themeNotifier.value =
+                    mode == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark,
               ),
             ),
+
+            // ── 4. Logout ───────────────────────────────────────────────
             IconButton(
-              icon:
-                  const Icon(Icons.logout_rounded, color: Colors.white54),
+              icon     : const Icon(Icons.logout_rounded, color: iconColorSoft),
+              tooltip  : 'Logout',
               onPressed: () {
                 if (_guardId != null) {
                   FirebaseFirestore.instance
@@ -479,56 +717,105 @@ class _GuardDashboardState extends State<GuardDashboard> {
                       .then((snap) {
                     for (final doc in snap.docs) {
                       doc.reference.update({
-                        'onDuty': false,
+                        'onDuty' : false,
                         'dutyEnd': FieldValue.serverTimestamp(),
                       });
                     }
-                  });
+                  }).catchError((_) {});
                 }
                 Navigator.pushReplacementNamed(context, '/');
               },
             ),
           ],
           bottom: const TabBar(
-            indicatorColor: Colors.cyanAccent,
-            labelColor: Colors.cyanAccent,
+            indicatorColor      : Colors.cyanAccent,
+            labelColor          : Colors.cyanAccent,
             unselectedLabelColor: Colors.white38,
             tabs: [
-              Tab(
-                  icon: Icon(Icons.dashboard_rounded), text: 'Control'),
-              Tab(
-                  icon: Icon(Icons.people_alt_rounded), text: 'Inside'),
+              Tab(icon: Icon(Icons.dashboard_rounded),  text: 'Control'),
+              Tab(icon: Icon(Icons.people_alt_rounded), text: 'Inside'),
             ],
           ),
         ),
 
-        floatingActionButton: FloatingActionButton.extended(
-          onPressed: () =>
-              UnifiedEntryForm.show(context, guardId: _guardId),
-          backgroundColor: Colors.cyanAccent,
-          foregroundColor: Colors.black,
-          icon: const Icon(Icons.add_rounded),
-          label: const Text(
-            'NEW ENTRY',
-            style: TextStyle(fontWeight: FontWeight.w800, letterSpacing: 0.8),
+        floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+        floatingActionButton: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              // ── ANPR FAB (left) ────────────────────────────────────────
+              FloatingActionButton(
+                heroTag        : 'anpr_fab',
+                onPressed      : () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => VehicleDetectionScreen(guardId: _guardId),
+                  ),
+                ),
+                backgroundColor: const Color(0xFF0E4163),
+                foregroundColor: AppTokens.cyanAction,
+                elevation      : 6,
+                tooltip        : 'ANPR Vehicle Scan',
+                child          : const Icon(Icons.videocam_rounded, size: 26),
+              ),
+
+              // ── Manual Movement FAB (centre) ───────────────────────────
+              FloatingActionButton(
+                heroTag        : 'manual_fab',
+                onPressed      : () => ManualMovementSheet.show(
+                  context,
+                  guardId  : _guardId,
+                  guardName: _fetchedGuardName,
+                ),
+                backgroundColor: const Color(0xFF2D1A00),
+                foregroundColor: Colors.orangeAccent,
+                elevation      : 6,
+                tooltip        : 'Manual Movement Log',
+                child          : const Icon(Icons.edit_note_rounded, size: 26),
+              ),
+
+              // ── Entry form FAB (right) ─────────────────────────────────
+              FloatingActionButton.extended(
+                heroTag        : 'entry_fab',
+                onPressed      : () =>
+                    UnifiedEntryForm.show(context, guardId: _guardId),
+                backgroundColor: Colors.cyanAccent,
+                foregroundColor: Colors.black,
+                icon           : const Icon(Icons.add_rounded),
+                label          : const Text(
+                  'NEW ENTRY',
+                  style: TextStyle(fontWeight: FontWeight.w800, letterSpacing: 0.8),
+                ),
+                elevation: 8,
+              ),
+            ],
           ),
-          elevation: 8,
         ),
 
         body: TabBarView(
           children: [
             // ── Control Tab ──────────────────────────────────────────────
             ListView(
-              padding: const EdgeInsets.only(bottom: 100),
+              padding: const EdgeInsets.only(bottom: 120),
               children: [
+                // Status banner
                 _buildLiveStats(),
 
+                // ── Gate Entry section ───────────────────────────────────
                 _sectionHeader('Gate Entry'),
-                _buildUnifiedEntryButton(),
+                _buildUnifiedEntryButton(),           // Delivery / Visitor
+                const SizedBox(height: 12),
 
+                // ── ANPR + Manual Movement section ───────────────────────
+                _sectionHeader('Vehicle Movement Log'),
+                _buildVehicleMovementSection(),
+
+                // ── Delivery requests ────────────────────────────────────
                 _sectionHeader('Live Delivery Requests'),
                 _buildLiveDeliveryRequests(),
 
+                // ── Recent logs ──────────────────────────────────────────
                 _sectionHeader('Recent Gate Logs'),
                 _buildLogsStream(),
 

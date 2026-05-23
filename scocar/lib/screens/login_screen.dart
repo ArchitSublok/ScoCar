@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../main.dart' show themeNotifier, AppTokens;
 import 'log_movement_screen.dart' show activeGuardName;
+import 'society_search_field.dart';  // ← Google Places society picker
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Role enum — drives the entire login screen state
@@ -34,9 +35,7 @@ extension _RoleExt on _Role {
     }
   }
 
-  Color get accentText {
-    return Colors.black; // always black on bright fill
-  }
+  // FIX 8: accentText getter removed — was declared but never used anywhere
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -44,7 +43,7 @@ extension _RoleExt on _Role {
 // Change _kAdminId / _kAdminCode before releasing to production.
 // ─────────────────────────────────────────────────────────────────────────────
 const String _kAdminId   = 'ADMIN';
-const String _kAdminCode = 'SCOCAR@ADMIN2024';
+const String _kAdminCode = 'ScoCar@admin';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // LoginScreen
@@ -63,6 +62,9 @@ class _LoginScreenState extends State<LoginScreen>
   bool   _isLoading  = false;
   bool   _loginLock  = false;
   bool   _obscureCode = true;
+
+  // Admin — selected society from Google Places picker
+  PlaceSuggestion? _selectedSociety;
 
   final _idCtrl   = TextEditingController();
   final _codeCtrl = TextEditingController();
@@ -102,10 +104,11 @@ class _LoginScreenState extends State<LoginScreen>
   void _switchRole(_Role r) {
     if (_isLoading || r == _role) return;
     setState(() {
-      _role = r;
+      _role            = r;
       _idCtrl.clear();
       _codeCtrl.clear();
-      _obscureCode = true;
+      _obscureCode     = true;
+      _selectedSociety = null;   // reset society on tab switch
     });
     _slideCtrl
       ..reset()
@@ -135,18 +138,32 @@ class _LoginScreenState extends State<LoginScreen>
     try {
       // ── ADMIN auth (local credential check — no Firestore round-trip) ────
       if (_role == _Role.admin) {
+        if (_selectedSociety == null) {
+          _toast('Please select a society / apartment first.', Colors.orange);
+          setState(() => _isLoading = false);
+          _loginLock = false;
+          return;
+        }
         if (inputId != _kAdminId || code != _kAdminCode) {
           _toast('ACCESS DENIED: Invalid admin credentials.', Colors.red);
           setState(() => _isLoading = false);
           _loginLock = false;
           return;
         }
-        // Admin OK
+        // Admin OK — pass selected society as route argument
         if (mounted) {
-          _grantAccess('✅ Admin access granted!');
+          _grantAccess('✅ Admin access granted — ${_selectedSociety!.mainText}');
           await Future.delayed(const Duration(milliseconds: 600));
           if (mounted) {
-            Navigator.pushReplacementNamed(context, '/admin_dashboard');
+            Navigator.pushReplacementNamed(
+              context,
+              '/admin_dashboard',
+              arguments: {
+                'societyName'  : _selectedSociety!.mainText,
+                'societyAddress': _selectedSociety!.fullDescription,
+                'placeId'      : _selectedSociety!.placeId,
+              },
+            );
           }
         }
         return;
@@ -331,7 +348,7 @@ class _LoginScreenState extends State<LoginScreen>
                   ),
                 ),
                 const SizedBox(height: 8),
-                Text('SCOCAR',
+                Text('ScoCar',
                     style: TextStyle(
                       color        : titleColor,
                       fontSize     : 22,
@@ -361,7 +378,7 @@ class _LoginScreenState extends State<LoginScreen>
                     borderRadius: BorderRadius.circular(24),
                     border      : Border.all(
                       color: isAdmin
-                          ? roleAccent.withOpacity(0.4)
+                          ? roleAccent.withValues(alpha: 0.4)
                           : cardBorder,
                       width: isAdmin ? 1.5 : 1.0,
                     ),
@@ -369,7 +386,7 @@ class _LoginScreenState extends State<LoginScreen>
                       BoxShadow(
                         blurRadius  : 30,
                         color       : isAdmin
-                            ? roleAccent.withOpacity(0.12)
+                            ? roleAccent.withValues(alpha: 0.12)
                             : shadowColor,
                       )
                     ],
@@ -416,10 +433,10 @@ class _LoginScreenState extends State<LoginScreen>
                           padding: const EdgeInsets.symmetric(
                               horizontal: 12, vertical: 8),
                           decoration: BoxDecoration(
-                            color       : const Color(0xFFFFB300).withOpacity(0.1),
+                            color       : const Color(0xFFFFB300).withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(10),
                             border: Border.all(
-                                color: const Color(0xFFFFB300).withOpacity(0.4)),
+                                color: const Color(0xFFFFB300).withValues(alpha: 0.4)),
                           ),
                           child: const Row(children: [
                             Icon(Icons.warning_amber_rounded,
@@ -448,6 +465,19 @@ class _LoginScreenState extends State<LoginScreen>
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
+
+                              // ── Society picker — Admin only ──────────
+                              if (_role == _Role.admin) ...[
+                                SocietySearchField(
+                                  isDark     : isDark,
+                                  accentColor: roleAccent,
+                                  onSelected : (suggestion) {
+                                    setState(() =>
+                                        _selectedSociety = suggestion);
+                                  },
+                                ),
+                                const SizedBox(height: 16),
+                              ],
 
                               // ID field
                               _buildField(
@@ -509,7 +539,7 @@ class _LoginScreenState extends State<LoginScreen>
                           style: ElevatedButton.styleFrom(
                             backgroundColor        : roleAccent,
                             foregroundColor        : Colors.black,
-                            disabledBackgroundColor: roleAccent.withOpacity(0.3),
+                            disabledBackgroundColor: roleAccent.withValues(alpha: 0.3),
                             shape: RoundedRectangleBorder(
                                 borderRadius:
                                     BorderRadius.circular(AppTokens.radiusButton)),
@@ -679,7 +709,7 @@ class _RoleChip extends StatelessWidget {
           ),
           boxShadow: selected
               ? [BoxShadow(
-                  color    : accent.withOpacity(0.28),
+                  color    : accent.withValues(alpha: 0.28),
                   blurRadius: 8,
                   offset   : const Offset(0, 3))]
               : null,

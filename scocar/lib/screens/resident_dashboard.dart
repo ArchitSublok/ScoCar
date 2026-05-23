@@ -963,19 +963,29 @@ class _ActivityHistoryTab extends StatelessWidget {
   }
 
   static String _formatTimestamp(dynamic ts) {
-    if (ts == null) return 'Just now';
+    if (ts == null) return '—';
     DateTime dt;
     if (ts is Timestamp) {
       dt = ts.toDate();
     } else {
-      return 'Just now';
+      return '—';
     }
-    final now = DateTime.now();
-    final diff = now.difference(dt);
-    if (diff.inMinutes < 1)  return 'Just now';
-    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
-    if (diff.inHours < 24)   return '${diff.inHours}h ago';
-    return '${dt.day}/${dt.month}/${dt.year}  ${dt.hour.toString().padLeft(2,'0')}:${dt.minute.toString().padLeft(2,'0')}';
+
+    // ── Exact date + 12-hour time with AM/PM ──────────────────────────────
+    // Format: "23 May 2025  02:47 PM"
+    const List<String> months = [
+      '', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    ];
+    final String day   = dt.day.toString().padLeft(2, '0');
+    final String month = months[dt.month];
+    final String year  = dt.year.toString();
+
+    final int    hour12 = dt.hour == 0 ? 12 : (dt.hour > 12 ? dt.hour - 12 : dt.hour);
+    final String minute = dt.minute.toString().padLeft(2, '0');
+    final String period = dt.hour < 12 ? 'AM' : 'PM';
+
+    return '$day $month $year  ${hour12.toString().padLeft(2, '0')}:$minute $period';
   }
 
   @override
@@ -1085,9 +1095,9 @@ class _ActivityHistoryTab extends StatelessWidget {
             // Timestamp — read from Firestore 'timestamp' field and
             // formatted via the built-in _formatTimestamp() method so
             // the output matches the class-level human-readable contract
-            // (Just now / Xm ago / Xh ago / dd/mm/yyyy hh:mm).
+            // Format: "23 May 2025  02:47 PM" — exact date and 12-hour time.
             final dynamic ts     = data['timestamp'];
-            final String  timeAgo = _formatTimestamp(ts);
+            final String  formattedTime = _formatTimestamp(ts);
 
             // Design tokens.
             final Color    accent = _typeColor(type);
@@ -1195,7 +1205,7 @@ class _ActivityHistoryTab extends StatelessWidget {
                                     size: 12, color: subColor),
                                 const SizedBox(width: 3),
                                 Text(
-                                  timeAgo,
+                                  formattedTime,
                                   style: TextStyle(
                                       color: subColor, fontSize: 11),
                                 ),
