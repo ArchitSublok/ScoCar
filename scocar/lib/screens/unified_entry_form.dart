@@ -307,30 +307,41 @@ class _UnifiedEntryFormState extends State<UnifiedEntryForm>
   // ─── Direct movement log ─────────────────────────────────────────────────
 
   Future<void> _writeMovementLog() async {
-    setState(() => _approvalState = _ApprovalState.pendingApproval);
+    // Do NOT transition to pendingApproval — movement is fire-and-forget;
+    // showing the approval overlay for a direct log write is misleading.
     final String movFlat = _movementFlatCtrl.text.trim().toUpperCase();
     final String movType = _isMovementEntry ? 'ENTRY' : 'EXIT';
     try {
       await FirebaseFirestore.instance.collection('logs').add({
-        'type'        : movType,
-        'entryType'   : _entryType.displayName,
-        'movement_type': movType,
-        'visitor_name': _nameCtrl.text.trim(),
-        'company'     : _nameCtrl.text.trim(),
-        'plateNumber' : _plateCtrl.text.trim().toUpperCase(),
+        // ── Fields consumed by _ActivityHistoryTab ────────────────────
+        // 'type' drives the ENTRY/EXIT badge colour and icon.
+        'type'          : movType,
+        // 'entryType' also carries movType so the badge resolver that
+        // reads data['type'] ?? data['entryType'] always finds the right
+        // value even if one field is absent.
+        'entryType'     : movType,
+        // Flat number — used by the resident's flat-specific stream query.
+        'flatNumber'    : movFlat,
+        // Visitor / company name shown in the activity card title row.
+        'company'       : _nameCtrl.text.trim(),
+        // Vehicle plate shown in the subtitle row.
+        'plateNumber'   : _plateCtrl.text.trim().toUpperCase(),
+        // Timestamp field used by orderBy('timestamp') + _formatTimestamp.
+        'timestamp'     : FieldValue.serverTimestamp(),
+        // ── Extra audit fields ────────────────────────────────────────
+        'guardId'       : widget.guardId ?? 'GUARD',
+        'notes'         : _notesCtrl.text.trim(),
+        // Legacy aliases kept for backwards-compat with older log readers.
+        'movement_type' : movType,
+        'visitor_name'  : _nameCtrl.text.trim(),
         'vehicle_number': _plateCtrl.text.trim().toUpperCase(),
-        'notes'       : _notesCtrl.text.trim(),
-        'guardId'     : widget.guardId ?? 'GUARD',
-        'flatNumber'  : movFlat,
-        'flat_number' : movFlat,
-        'timestamp'   : FieldValue.serverTimestamp(),
+        'flat_number'   : movFlat,
       });
       if (!mounted) return;
       Navigator.pop(context);
       _showSnack('✅ Movement $movType logged for Flat $movFlat.', Colors.green.shade700);
     } catch (e) {
       if (mounted) {
-        setState(() => _approvalState = _ApprovalState.idle);
         _showSnack('Log failed: $e', Colors.red.shade700);
       }
     }
@@ -352,15 +363,31 @@ class _UnifiedEntryFormState extends State<UnifiedEntryForm>
       final docRef = await FirebaseFirestore.instance
           .collection('approvals')
           .add({
-        'status'         : 'PENDING',  // resident changes this to APPROVED / DENIED
-        'entryType'      : _entryType.displayName,
+        // ── Core fields required by ResidentDashboard stream ──────────────
+        'status'         : 'PENDING',   // resident changes to APPROVED / DENIED
+        'flatNumber'     : _flatCtrl.text.trim().toUpperCase(),
         'company'        : _nameCtrl.text.trim(),
         'plateNumber'    : _plateCtrl.text.trim().toUpperCase(),
-        'flatNumber'     : _flatCtrl.text.trim().toUpperCase(),
-        'notes'          : _notesCtrl.text.trim(),
         'guardId'        : widget.guardId ?? 'GUARD',
-        'agentPhotoPath' : _agentPhoto?.path,
-        'plateImagePath' : _scannedPlateImage?.path,
+        // photoUrl stores the local file path for same-device previews.
+        // Replace with a Firebase Storage download URL if cloud upload is added.
+        // Use network URL if no local photo taken so resident can always see image
+        'photoUrl'       : _agentPhoto != null
+            ? _agentPhoto!.path
+            : 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=300',
+        'visitorPhotoUrl': _agentPhoto != null
+            ? _agentPhoto!.path
+            : 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=300',
+        'createdAt'      : FieldValue.serverTimestamp(),
+        // ── Extra context fields ──────────────────────────────────────────
+        'entryType'      : _entryType.displayName,
+        'driverName'     : _nameCtrl.text.trim().isNotEmpty
+            ? _nameCtrl.text.trim()
+            : 'Delivery Agent',
+        'otpCode'        : (1000 + DateTime.now().millisecond % 9000).toString(),
+        'notes'          : _notesCtrl.text.trim(),
+        'agentPhotoPath' : _agentPhoto?.path ?? '',
+        'plateImagePath' : _scannedPlateImage?.path ?? '',
         'timestamp'      : FieldValue.serverTimestamp(),
         'expiresAt'      : Timestamp.fromDate(
             DateTime.now().add(const Duration(seconds: _timeoutSeconds))),
@@ -413,6 +440,10 @@ class _UnifiedEntryFormState extends State<UnifiedEntryForm>
       await FirebaseFirestore.instance.collection('logs').add({
         'type'           : 'ENTRY',
         'entryType'      : _entryType.displayName,
+        'driverName'     : _nameCtrl.text.trim().isNotEmpty
+            ? _nameCtrl.text.trim()
+            : 'Delivery Agent',
+        'otpCode'        : (1000 + DateTime.now().millisecond % 9000).toString(),
         'company'        : _nameCtrl.text.trim(),
         'plateNumber'    : _plateCtrl.text.trim().toUpperCase(),
         'flatNumber'     : _flatCtrl.text.trim().toUpperCase(),

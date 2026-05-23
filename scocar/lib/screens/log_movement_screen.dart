@@ -142,13 +142,16 @@ class _LogMovementScreenState extends State<LogMovementScreen>
       await FirebaseFirestore.instance.collection('logs').add({
         'plateNumber' : plateText,
         'type'        : _isEntry ? 'ENTRY' : 'EXIT',
+        'entryType'   : _isEntry ? 'ENTRY' : 'EXIT',
         'company'     : company,
         'vehicleModel': _selectedVehicleType,
+        'guardId'     : activeGuardName,
         'guardName'   : activeGuardName,
         'driverName'  : driverName.isNotEmpty ? driverName : 'Delivery Agent',
         'driverPic'   : driverPic,
         'otpCode'     : generatedOtp,
-        'flatNumber'  : targetFlat,
+        'flatNumber'  : targetFlat,   // ← resident Activity tab filters by this
+        'flat_number' : targetFlat,   // ← legacy alias
         'timestamp'   : FieldValue.serverTimestamp(),
       });
 

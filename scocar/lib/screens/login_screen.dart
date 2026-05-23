@@ -222,7 +222,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       color: isDark ? AppTokens.cyanAction : AppTokens.lightAccent),
                 ),
                 const SizedBox(height: 8),
-                Text('SCOCAR OS',
+                Text('SCOCAR',
                     style: TextStyle(
                       color      : titleColor,
                       fontSize   : 22,

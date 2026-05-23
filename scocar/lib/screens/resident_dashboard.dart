@@ -1,7 +1,11 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/log_sort_service.dart';
 import '../services/notification_service.dart';
+import '../services/alert_sound_service.dart';
 import 'add_vehicle_screen.dart';
 import '../main.dart' show themeNotifier;
 
@@ -18,6 +22,17 @@ class _ResidentDashboardState extends State<ResidentDashboard> {
 
   // Feature 6: Track last seen doc count to detect new arrivals
   int _lastPendingCount = 0;
+
+  // ── Beep alert state ──────────────────────────────────────────────────────
+  final AlertSoundService _alertSound = AlertSoundService();
+  // Tracks which approval doc IDs are already beeping (prevents double-start)
+  final Set<String> _alertingDocIds = {};
+
+  @override
+  void dispose() {
+    _alertSound.stopAlert();
+    super.dispose();
+  }
 
   @override
   void didChangeDependencies() {
@@ -298,8 +313,8 @@ class _ResidentDashboardState extends State<ResidentDashboard> {
       stream: FirebaseFirestore.instance
           .collection('approvals')
           .where('flatNumber', isEqualTo: flatId)
-          .orderBy('timestamp', descending: true)
-          .snapshots(),
+          .where('status', isEqualTo: 'PENDING')
+          .snapshots(), // orderBy removed — sort client-side to avoid index requirement
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(
@@ -313,7 +328,7 @@ class _ResidentDashboardState extends State<ResidentDashboard> {
                 Icon(Icons.check_circle_outline_rounded,
                     size: 56, color: Theme.of(context).dividerColor),
                 const SizedBox(height: 12),
-                Text('No pending delivery requests.',
+                Text('No pending gate requests.',
                     style:
                         TextStyle(color: Theme.of(context).textTheme.bodySmall?.color?.withOpacity(0.6), fontSize: 14)),
                 const SizedBox(height: 4),
@@ -325,32 +340,44 @@ class _ResidentDashboardState extends State<ResidentDashboard> {
           );
         }
 
-        // Feature 6: Count PENDING docs and alert if new one arrived
-        final docs = snapshot.data!.docs;
-        final int currentPending = docs
-            .where((d) =>
-                (d.data() as Map<String, dynamic>)['status'] == 'PENDING')
-            .length;
+        // Feature 6: PENDING-filtered, sorted client-side (no Firestore index needed)
+        final docs = snapshot.data!.docs.toList()
+          ..sort((a, b) {
+            final tsA = (a.data() as Map<String, dynamic>)['timestamp'];
+            final tsB = (b.data() as Map<String, dynamic>)['timestamp'];
+            DateTime? dtA = tsA is Timestamp ? tsA.toDate() : null;
+            DateTime? dtB = tsB is Timestamp ? tsB.toDate() : null;
+            if (dtA == null && dtB == null) return 0;
+            if (dtA == null) return 1;
+            if (dtB == null) return -1;
+            return dtB.compareTo(dtA);
+          });
+        final int currentPending = docs.length;
 
-        // Schedule post-frame callback so setState doesn't fire during build
+        // 🔔 Beep + banner when new request arrives; stop when resolved
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (currentPending > _lastPendingCount && mounted) {
+          if (!mounted) return;
+          if (currentPending > _lastPendingCount) {
             _lastPendingCount = currentPending;
-            // Show a prominent alert banner (audioplayers not in pubspec yet —
-            // using SnackBar + vibration-style notice as the in-app ringer)
+            // Start 60-second repeating beep alert
+            _alertSound.startAlert();
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: const Row(
                   children: [
                     Icon(Icons.notifications_active_rounded,
-                        color: Colors.white),
+                        color: Colors.white, size: 22),
                     SizedBox(width: 10),
-                    Text('🔔 New delivery request at your gate!',
-                        style: TextStyle(fontWeight: FontWeight.bold)),
+                    Expanded(
+                      child: Text(
+                        '🔔 Someone is at your gate! Respond within 60s.',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                    ),
                   ],
                 ),
-                backgroundColor: Colors.orange,
-                duration: const Duration(seconds: 5),
+                backgroundColor: Colors.deepOrange,
+                duration: const Duration(seconds: 60),
                 action: SnackBarAction(
                   label: 'VIEW',
                   textColor: Colors.white,
@@ -358,8 +385,10 @@ class _ResidentDashboardState extends State<ResidentDashboard> {
                 ),
               ),
             );
-          } else if (currentPending < _lastPendingCount && mounted) {
+          } else if (currentPending < _lastPendingCount || currentPending == 0) {
             _lastPendingCount = currentPending;
+            // All requests resolved — stop beeping
+            _alertSound.stopAlert();
           }
         });
 
@@ -386,13 +415,17 @@ class _ResidentDashboardState extends State<ResidentDashboard> {
     required Map<String, dynamic> data,
     required String flatId,
   }) {
-    final String company   = data['company']    ?? 'DELIVERY';
-    final String status    = data['status']     ?? 'PENDING';
-    final String guardId   = data['sentBy']     ?? data['guardName'] ?? 'GUARD';
-    final String driverName = data['driverName'] ?? 'Unknown Driver';
-    final String driverPic  = data['driverPic']  ?? '';
+    final String company    = data['company']     ?? 'DELIVERY';
+    final String status     = data['status']      ?? 'PENDING';
+    // guardId: unified_entry_form writes 'guardId'; fall back to legacy keys
+    final String guardId    = data['guardId']     ?? data['sentBy'] ?? data['guardName'] ?? 'GUARD';
     final String plate      = data['plateNumber'] ?? '—';
-    final String vehicleModel = data['vehicleModel'] ?? '—';
+    final String entryType  = data['entryType']   ?? 'Delivery';
+    // photoUrl: unified_entry_form writes the local file path here.
+    // When Firebase Storage is wired up, this will be an https:// URL.
+    final String photoUrl   = data['photoUrl'] ?? data['agentPhotoPath'] ?? '';
+    final bool isNetworkPhoto = photoUrl.startsWith('http');
+    final bool isLocalPhoto   = photoUrl.isNotEmpty && !isNetworkPhoto;
     // Feature 4: Show OTP to resident
     final String? otpCode   = data['otpCode'] as String?;
 
@@ -438,23 +471,38 @@ class _ResidentDashboardState extends State<ResidentDashboard> {
                 const BorderRadius.vertical(top: Radius.circular(20)),
             child: Stack(
               children: [
-                if (driverPic.isNotEmpty)
-                  SizedBox(
-                    width: double.infinity,
-                    height: 120,
-                    child: Image.network(
-                      driverPic,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => Container(
-                        height: 120,
-                         color: Theme.of(context).cardColor,
-                        child: const Center(
-                          child: Icon(Icons.person_rounded,
-                              size: 60, color: Colors.white24),
-                        ),
-                      ),
-                    ),
-                  ),
+                // ── Agent Photo Frame ────────────────────────────────────
+                // 1. https:// URL → Image.network  (Firebase Storage / CDN)
+                // 2. Local path   → Image.file     (same device, guard app)
+                // 3. Empty        → placeholder icon
+                SizedBox(
+                  width: double.infinity,
+                  height: 140,
+                  child: isNetworkPhoto
+                      ? Image.network(
+                          photoUrl,
+                          fit: BoxFit.cover,
+                          loadingBuilder: (_, child, progress) =>
+                              progress == null
+                                  ? child
+                                  : Container(
+                                      color: const Color(0xFF0D2137),
+                                      child: const Center(
+                                        child: CircularProgressIndicator(
+                                            color: Colors.cyanAccent,
+                                            strokeWidth: 2),
+                                      ),
+                                    ),
+                          errorBuilder: (_, __, ___) => _photoPlaceholder(),
+                        )
+                      : isLocalPhoto
+                          ? Image.file(
+                              File(photoUrl),
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => _photoPlaceholder(),
+                            )
+                          : _photoPlaceholder(),
+                ),
                 // Gradient overlay for readability
                 Positioned(
                   bottom: 0,
@@ -480,14 +528,27 @@ class _ResidentDashboardState extends State<ResidentDashboard> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(driverName,
-                          style: TextStyle(
-                              color: Theme.of(context).brightness == Brightness.dark ? Colors.white : Colors.white,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16)),
-                      Text(plate,
+                      // Visitor / Company Name
+                      Text(company,
                           style: const TextStyle(
-                              color: Colors.white70, fontSize: 13)),
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                              shadows: [
+                                Shadow(blurRadius: 6, color: Colors.black87)
+                              ])),
+                      const SizedBox(height: 3),
+                      // Vehicle Plate Number
+                      Row(children: [
+                        const Icon(Icons.directions_car_rounded,
+                            size: 12, color: Colors.white70),
+                        const SizedBox(width: 4),
+                        Text(plate,
+                            style: const TextStyle(
+                                color: Colors.white70,
+                                fontSize: 13,
+                                fontFamily: 'monospace')),
+                      ]),
                     ],
                   ),
                 ),
@@ -516,7 +577,7 @@ class _ResidentDashboardState extends State<ResidentDashboard> {
                             fontSize: 13)),
                   ),
                   const SizedBox(width: 8),
-                  _infoChip(vehicleModel, Colors.blueAccent),
+                  _infoChip(entryType, Colors.blueAccent),
                   const Spacer(),
                   Icon(statusIcon, color: statusColor, size: 18),
                   const SizedBox(width: 5),
@@ -530,6 +591,19 @@ class _ResidentDashboardState extends State<ResidentDashboard> {
                 Text(statusText,
                     style: TextStyle(
                         color: Theme.of(context).textTheme.bodySmall?.color, fontSize: 13)),
+
+                // 60-second expiry countdown bar
+                if (status == 'PENDING')
+                  _ExpiryCountdown(
+                    data    : data,
+                    onExpired: () {
+                      FirebaseFirestore.instance
+                          .collection('approvals')
+                          .doc(docId)
+                          .update({'status': 'TIMEOUT'}).catchError((_) {});
+                      _alertSound.stopAlert();
+                    },
+                  ),
 
                 // Feature 4: OTP display
                 if (otpCode != null && otpCode.isNotEmpty) ...[
@@ -867,6 +941,24 @@ class _ResidentDashboardState extends State<ResidentDashboard> {
     );
   }
 
+  /// Fallback widget shown when the agent photo is absent or fails to load.
+  Widget _photoPlaceholder() {
+    return Container(
+      height: 140,
+      width: double.infinity,
+      color: const Color(0xFF0D2137),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.person_rounded, size: 52, color: Colors.white24),
+          const SizedBox(height: 6),
+          const Text('No photo available',
+              style: TextStyle(color: Colors.white24, fontSize: 11)),
+        ],
+      ),
+    );
+  }
+
   Widget _infoChip(String text, Color color) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -948,7 +1040,6 @@ class _ActivityHistoryTab extends StatelessWidget {
       stream: FirebaseFirestore.instance
           .collection('logs')
           .where('flatNumber', isEqualTo: flatNumber)
-          .orderBy('timestamp', descending: true)
           .limit(50)
           .snapshots(),
       builder: (context, snapshot) {
@@ -1004,113 +1095,306 @@ class _ActivityHistoryTab extends StatelessWidget {
           itemCount       : docs.length,
           separatorBuilder: (_, __) => const SizedBox(height: 10),
           itemBuilder     : (_, i) {
-            final data    = docs[i].data() as Map<String, dynamic>;
-            final type    = (data['type'] ?? data['entryType'] ?? 'MOVEMENT')
-                .toString().toUpperCase();
-            final company = (data['company']  ?? data['visitor_name'] ?? '—').toString();
-            final plate   = (data['plateNumber'] ?? '—').toString();
-            final guard   = (data['guardId']  ?? '—').toString();
-            final ts      = data['timestamp'];
-            final accent  = _typeColor(type);
-            final icon    = _typeIcon(type);
+            final data = docs[i].data() as Map<String, dynamic>;
+
+            // ── Field resolution ──────────────────────────────────────
+            // 'type' is the canonical ENTRY/EXIT field written by
+            // _writeMovementLog. Fall back to 'entryType' for older docs
+            // or approved-delivery logs that use displayName strings.
+            final String type =
+                (data['type'] ?? data['entryType'] ?? 'MOVEMENT')
+                    .toString()
+                    .toUpperCase();
+
+            // Visitor / company name — prefer 'company', fall back to
+            // 'visitor_name' written by legacy guard-app versions.
+            final String company =
+                (data['company'] ?? data['visitor_name'] ?? '—').toString();
+
+            // Vehicle plate — prefer canonical 'plateNumber'.
+            final String plate =
+                (data['plateNumber'] ?? data['vehicle_number'] ?? '—')
+                    .toString()
+                    .toUpperCase();
+
+            // Guard who logged the event.
+            final String guard = (data['guardId'] ?? '—').toString();
+
+            // Optional free-text notes.
+            final String notes = (data['notes'] ?? '').toString().trim();
+
+            // Timestamp — read from Firestore 'timestamp' field and
+            // formatted via the built-in _formatTimestamp() method so
+            // the output matches the class-level human-readable contract
+            // (Just now / Xm ago / Xh ago / dd/mm/yyyy hh:mm).
+            final dynamic ts     = data['timestamp'];
+            final String  timeAgo = _formatTimestamp(ts);
+
+            // Design tokens.
+            final Color    accent = _typeColor(type);
+            final IconData icon   = _typeIcon(type);
 
             return Container(
               decoration: BoxDecoration(
                 color       : cardColor,
-                borderRadius: BorderRadius.circular(14),
-                border      : Border.all(color: borderColor),
+                borderRadius: BorderRadius.circular(16),
+                border      : Border.all(
+                    color: accent.withOpacity(0.25), width: 1.0),
               ),
-              child: ListTile(
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                leading: Container(
-                  width : 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color       : accent.withOpacity(0.12),
-                    borderRadius: BorderRadius.circular(12),
-                    border      : Border.all(color: accent.withOpacity(0.3)),
-                  ),
-                  child: Icon(icon, color: accent, size: 22),
-                ),
-                title: Row(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 14, vertical: 12),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Type badge
+                    // ── Left icon column ─────────────────────────────
                     Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 3),
+                      width : 46,
+                      height: 46,
                       decoration: BoxDecoration(
                         color       : accent.withOpacity(0.12),
-                        borderRadius: BorderRadius.circular(6),
+                        borderRadius: BorderRadius.circular(13),
                         border      : Border.all(
-                            color: accent.withOpacity(0.3), width: 0.8),
+                            color: accent.withOpacity(0.35), width: 1),
                       ),
-                      child: Text(
-                        type,
-                        style: TextStyle(
-                          color     : accent,
-                          fontSize  : 10,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 0.6,
-                        ),
-                      ),
+                      child: Icon(icon, color: accent, size: 22),
                     ),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: 12),
+
+                    // ── Content column ───────────────────────────────
                     Expanded(
-                      child: Text(
-                        company,
-                        style: TextStyle(
-                          color     : titleColor,
-                          fontSize  : 14,
-                          fontWeight: FontWeight.w600,
-                        ),
-                        overflow: TextOverflow.ellipsis,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+
+                          // ── Title row: ENTRY/EXIT badge + name ──────
+                          Row(
+                            children: [
+                              // ENTRY / EXIT / DELIVERY badge
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: accent.withOpacity(0.14),
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(
+                                      color: accent.withOpacity(0.4),
+                                      width: 0.8),
+                                ),
+                                child: Text(
+                                  type,
+                                  style: TextStyle(
+                                    color        : accent,
+                                    fontSize     : 10,
+                                    fontWeight   : FontWeight.w800,
+                                    letterSpacing: 0.8,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              // Visitor / company name
+                              Expanded(
+                                child: Text(
+                                  company,
+                                  style: TextStyle(
+                                    color     : titleColor,
+                                    fontSize  : 14,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+
+                          // ── Meta row: plate + timestamp ─────────────
+                          Wrap(
+                            spacing           : 12,
+                            runSpacing        : 4,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            children: [
+                              // Vehicle plate (only when present)
+                              if (plate != '—')
+                                Row(mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                  Icon(Icons.directions_car_rounded,
+                                      size: 12, color: subColor),
+                                  const SizedBox(width: 3),
+                                  Text(
+                                    plate,
+                                    style: TextStyle(
+                                        color     : subColor,
+                                        fontSize  : 12,
+                                        fontFamily: 'monospace'),
+                                  ),
+                                ]),
+                              // Timestamp — formatted by _formatTimestamp
+                              Row(mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                Icon(Icons.access_time_rounded,
+                                    size: 12, color: subColor),
+                                const SizedBox(width: 3),
+                                Text(
+                                  timeAgo,
+                                  style: TextStyle(
+                                      color: subColor, fontSize: 11),
+                                ),
+                              ]),
+                            ],
+                          ),
+
+                          // ── Guard row ───────────────────────────────
+                          if (guard != '—') ...[
+                            const SizedBox(height: 4),
+                            Row(children: [
+                              Icon(Icons.shield_outlined,
+                                  size: 12, color: subColor),
+                              const SizedBox(width: 3),
+                              Text(
+                                'Guard: $guard',
+                                style: TextStyle(
+                                    color: subColor, fontSize: 11),
+                              ),
+                            ]),
+                          ],
+
+                          // ── Notes row (only when non-empty) ─────────
+                          if (notes.isNotEmpty) ...[
+                            const SizedBox(height: 4),
+                            Row(
+                              crossAxisAlignment:
+                                  CrossAxisAlignment.start,
+                              children: [
+                                Icon(Icons.notes_rounded,
+                                    size: 12, color: subColor),
+                                const SizedBox(width: 3),
+                                Expanded(
+                                  child: Text(
+                                    notes,
+                                    style: TextStyle(
+                                        color    : subColor,
+                                        fontSize : 11,
+                                        fontStyle: FontStyle.italic),
+                                    maxLines : 2,
+                                    overflow : TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ],
                       ),
                     ),
                   ],
-                ),
-                subtitle: Padding(
-                  padding: const EdgeInsets.only(top: 6),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (plate != '—')
-                        Row(children: [
-                          Icon(Icons.directions_car_rounded,
-                              size: 12, color: subColor),
-                          const SizedBox(width: 4),
-                          Text(plate,
-                              style: TextStyle(
-                                  color    : subColor,
-                                  fontSize : 12,
-                                  fontFamily: 'monospace')),
-                        ]),
-                      const SizedBox(height: 3),
-                      Row(
-                        children: [
-                          Icon(Icons.access_time_rounded,
-                              size: 12, color: subColor),
-                          const SizedBox(width: 4),
-                          Text(LogSortService.formatForDisplay(ts),
-                              style: TextStyle(
-                                  color  : subColor, fontSize: 11)),
-                          const Spacer(),
-                          Icon(Icons.shield_outlined,
-                              size: 12, color: subColor),
-                          const SizedBox(width: 4),
-                          Text(guard,
-                              style: TextStyle(
-                                  color: subColor, fontSize: 11)),
-                        ],
-                      ),
-                    ],
-                  ),
                 ),
               ),
             );
           },
         );
       },
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// _ExpiryCountdown
+//
+// Shows a red countdown bar + "XX seconds remaining" text on each PENDING
+// approval card. When it reaches zero it calls onExpired() which marks
+// the Firestore document as TIMEOUT and stops the beep alert.
+// ─────────────────────────────────────────────────────────────────────────────
+class _ExpiryCountdown extends StatefulWidget {
+  final Map<String, dynamic> data;
+  final VoidCallback          onExpired;
+
+  const _ExpiryCountdown({required this.data, required this.onExpired});
+
+  @override
+  State<_ExpiryCountdown> createState() => _ExpiryCountdownState();
+}
+
+class _ExpiryCountdownState extends State<_ExpiryCountdown> {
+  static const int _totalSeconds = 60;
+  int    _secondsLeft = _totalSeconds;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _calculateSecondsLeft();
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      setState(() {
+        _secondsLeft = (_secondsLeft - 1).clamp(0, _totalSeconds);
+      });
+      if (_secondsLeft <= 0) {
+        _timer?.cancel();
+        widget.onExpired();
+      }
+    });
+  }
+
+  void _calculateSecondsLeft() {
+    final dynamic exp = widget.data['expiresAt'];
+    if (exp is Timestamp) {
+      final secs = exp.toDate().difference(DateTime.now()).inSeconds;
+      _secondsLeft = secs.clamp(0, _totalSeconds);
+    } else {
+      // No expiresAt field — start fresh 60s countdown
+      _secondsLeft = _totalSeconds;
+    }
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final double fraction = _secondsLeft / _totalSeconds;
+    final Color barColor = fraction > 0.5
+        ? Colors.greenAccent
+        : fraction > 0.25
+            ? Colors.orangeAccent
+            : Colors.redAccent;
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 10, bottom: 2),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Progress bar
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value          : fraction,
+              backgroundColor: barColor.withOpacity(0.15),
+              color          : barColor,
+              minHeight      : 6,
+            ),
+          ),
+          const SizedBox(height: 5),
+          Row(
+            children: [
+              Icon(Icons.timer_rounded, size: 12, color: barColor),
+              const SizedBox(width: 4),
+              Text(
+                _secondsLeft > 0
+                    ? '$_secondsLeft seconds to respond'
+                    : 'Request expired',
+                style: TextStyle(
+                  color    : barColor,
+                  fontSize : 11,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }
