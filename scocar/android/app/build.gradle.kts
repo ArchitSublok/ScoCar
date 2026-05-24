@@ -10,8 +10,15 @@ plugins {
 
 android {
     namespace = "com.example.scocar"
-    compileSdk = flutter.compileSdkVersion
-    ndkVersion = flutter.ndkVersion
+    // compileSdk = flutter.compileSdkVersiontoInt()
+    compileSdk = 35
+    // ndkVersion = flutter.ndkVersion
+
+
+    // compileSdkVersion 34;
+    compileSdk = 35
+    // ndkVersion "27.0.12077973";
+    ndkVersion = "27.0.12077973"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

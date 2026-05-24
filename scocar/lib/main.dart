@@ -24,7 +24,11 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 }
 
 // ─── Global theme notifier ────────────────────────────────────────────────────
-final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.system);
+// ThemeMode.dark is the explicit default so both web and Android/iOS start
+// in the same dark mode regardless of the device's OS theme setting.
+// Changing ThemeMode.system was causing web (light OS) and Android emulator
+// (dark OS) to render in different modes — this single line fixes that.
+final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.dark);
 
 void toggleTheme() {
   themeNotifier.value =

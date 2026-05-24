@@ -80,7 +80,7 @@ class AdminDashboard extends StatelessWidget {
             ),
             // Logout
             IconButton(
-              icon     : const Icon(Icons.logout_rounded, color: Colors.white54),
+              icon     : const Icon(Icons.logout_rounded, color: Colors.white70),
               tooltip  : 'Logout',
               onPressed: () =>
                   Navigator.pushReplacementNamed(context, '/'),
@@ -89,7 +89,7 @@ class AdminDashboard extends StatelessWidget {
           bottom: const TabBar(
             indicatorColor      : _kAdminAccent,
             labelColor          : _kAdminAccent,
-            unselectedLabelColor: Colors.white38,
+            unselectedLabelColor: Colors.white60,
             tabs: [
               Tab(icon: Icon(Icons.shield_rounded,     size: 20), text: 'Guards'),
               Tab(icon: Icon(Icons.home_rounded,       size: 20), text: 'Residents'),
@@ -134,7 +134,7 @@ class _GuardsTab extends StatelessWidget {
             items: [
               _SummaryItem('TOTAL',   '${docs.length}',                     _kAdminAccent),
               _SummaryItem('ON DUTY', '${docs.where((d) => (d.data() as Map)['onDuty'] == true).length}', Colors.greenAccent),
-              _SummaryItem('OFF',     '${docs.where((d) => (d.data() as Map)['onDuty'] != true).length}', Colors.white38),
+              _SummaryItem('OFF',     '${docs.where((d) => (d.data() as Map)['onDuty'] != true).length}', Colors.grey),
             ],
           ),
 
@@ -243,7 +243,9 @@ class _GuardCard extends StatelessWidget {
                 child: Text(
                   duty ? '● ON DUTY' : '○ OFF DUTY',
                   style: TextStyle(
-                      color     : duty ? Colors.greenAccent : Colors.white38,
+                      color     : duty
+                          ? Colors.greenAccent
+                          : Theme.of(context).colorScheme.onSurface.withOpacity(0.38),
                       fontSize  : 10,
                       fontWeight: FontWeight.bold,
                       letterSpacing: 0.5),
@@ -1028,8 +1030,8 @@ class _SummaryCell extends StatelessWidget {
                 fontWeight: FontWeight.bold)),
         const SizedBox(height: 2),
         Text(item.label,
-            style: const TextStyle(
-                color      : Colors.white38,
+            style: TextStyle(
+                color      : Theme.of(context).colorScheme.onSurface.withOpacity(0.45),
                 fontSize   : 9,
                 fontWeight : FontWeight.bold,
                 letterSpacing: 0.6)),
@@ -1140,7 +1142,9 @@ class _InfoRowState extends State<_InfoRow> {
         Icon(widget.icon, size: 12, color: widget.color.withOpacity(0.7)),
         const SizedBox(width: 4),
         Text('${widget.label}: ',
-            style: const TextStyle(color: Colors.white38, fontSize: 11)),
+            style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.4),
+                fontSize: 11)),
         Expanded(
           child: Text(display,
               style: TextStyle(
@@ -1158,16 +1162,16 @@ class _InfoRowState extends State<_InfoRow> {
                   ? Icons.visibility_off_rounded
                   : Icons.visibility_rounded,
               size : 13,
-              color: Colors.white30,
+              color: Theme.of(context).colorScheme.onSurface.withOpacity(0.3),
             ),
           ),
         if (!widget.isCode)
           GestureDetector(
             onTap: () {
               Clipboard.setData(ClipboardData(text: widget.value));
-              // ignore snackbar for brevity
             },
-            child: const Icon(Icons.copy_rounded, size: 13, color: Colors.white24),
+            child: Icon(Icons.copy_rounded, size: 13,
+                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.25)),
           ),
       ]),
     );
@@ -1210,21 +1214,25 @@ class _EmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, size: 64, color: Colors.white12),
+            Icon(icon, size: 64, color: cs.onSurface.withOpacity(0.12)),
             const SizedBox(height: 16),
             Text(message,
-                style: const TextStyle(
-                    color: Colors.white54, fontSize: 15, fontWeight: FontWeight.bold),
+                style: TextStyle(
+                    color: cs.onSurface.withOpacity(0.55),
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold),
                 textAlign: TextAlign.center),
             const SizedBox(height: 6),
             Text(sub,
-                style: const TextStyle(color: Colors.white30, fontSize: 12),
+                style: TextStyle(
+                    color: cs.onSurface.withOpacity(0.35), fontSize: 12),
                 textAlign: TextAlign.center),
           ],
         ),
