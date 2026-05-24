@@ -9,7 +9,7 @@ plugins {
 }
 
 android {
-    namespace = "com.example.scocar"
+    namespace = "com.example.soccar"
     // compileSdk = flutter.compileSdkVersiontoInt()
     compileSdk = 35
     // ndkVersion = flutter.ndkVersion
