@@ -269,40 +269,102 @@ class _ResidentDashboardState extends State<ResidentDashboard> {
         return ListView.builder(
           itemCount: snapshot.data!.docs.length,
           itemBuilder: (context, index) {
-            final v =
-                snapshot.data!.docs[index].data() as Map<String, dynamic>;
+            final doc = snapshot.data!.docs[index];
+            final v = doc.data() as Map<String, dynamic>;
+            final String verStatus = v['verificationStatus'] ?? 'PENDING';
+
+            // Dot color and label based on verification status
+            Color dotColor;
+            String dotLabel;
+            IconData statusIcon;
+            switch (verStatus) {
+              case 'APPROVED':
+                dotColor  = Colors.greenAccent;
+                dotLabel  = 'Verified';
+                statusIcon = Icons.verified_rounded;
+                break;
+              case 'DENIED':
+                dotColor  = Colors.redAccent;
+                dotLabel  = 'Denied';
+                statusIcon = Icons.cancel_rounded;
+                break;
+              default: // PENDING
+                dotColor  = Colors.redAccent;
+                dotLabel  = 'Pending verification';
+                statusIcon = Icons.radio_button_on_rounded;
+            }
+
             return Container(
-              margin:
-                  const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
+              margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
                 color: Theme.of(context).cardColor,
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: Theme.of(context).dividerColor),
+                border: Border.all(
+                  color: dotColor.withOpacity(0.45),
+                  width: verStatus == 'PENDING' ? 1.5 : 1.0,
+                ),
               ),
               child: Row(children: [
+                // Car icon circle
                 Container(
                   padding: const EdgeInsets.all(10),
-                  decoration: const BoxDecoration(
-                      color: Colors.blueAccent, shape: BoxShape.circle),
-                  child: const Icon(Icons.directions_car,
-                      color: Colors.white, size: 20), // white on blue bg — intentional
+                  decoration: BoxDecoration(
+                    color: verStatus == 'APPROVED'
+                        ? Colors.green.withOpacity(0.18)
+                        : verStatus == 'DENIED'
+                            ? Colors.redAccent.withOpacity(0.15)
+                            : Colors.blueAccent.withOpacity(0.18),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.directions_car,
+                    color: verStatus == 'APPROVED'
+                        ? Colors.greenAccent
+                        : verStatus == 'DENIED'
+                            ? Colors.redAccent
+                            : Colors.blueAccent,
+                    size: 20,
+                  ),
                 ),
                 const SizedBox(width: 14),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(v['plateNumber'] ?? 'UNKNOWN',
-                          style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: Theme.of(context).textTheme.bodyMedium?.color,
-                              fontSize: 15)),
-                      Text('Owner: ${v['ownerName'] ?? 'Verified'}',
-                          style: TextStyle(
-                              color: Theme.of(context).textTheme.bodySmall?.color, fontSize: 12)),
+                      Text(
+                        v['plateNumber'] ?? 'UNKNOWN',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: Theme.of(context).textTheme.bodyMedium?.color,
+                          fontSize: 15,
+                        ),
+                      ),
+                      Text(
+                        'Owner: ${v['ownerName'] ?? 'Unknown'}',
+                        style: TextStyle(
+                          color: Theme.of(context).textTheme.bodySmall?.color,
+                          fontSize: 12,
+                        ),
+                      ),
                     ],
                   ),
+                ),
+                // Verification status badge (dot + label)
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Icon(statusIcon, color: dotColor, size: 18),
+                    const SizedBox(height: 3),
+                    Text(
+                      dotLabel,
+                      style: TextStyle(
+                        color: dotColor,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
                 ),
               ]),
             );
@@ -1077,7 +1139,7 @@ class _ActivityHistoryTab extends StatelessWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.error_outline_rounded, color: Colors.redAccent, size: 40),
+                const Icon(Icons.error_outline_rounded, color: Colors.redAccent, size: 40),
                 const SizedBox(height: 12),
                 Text('Failed to load activity.\nCheck Firestore index.',
                     textAlign: TextAlign.center,

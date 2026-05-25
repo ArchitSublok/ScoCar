@@ -113,13 +113,13 @@ class _CameraRegistrationScreenState extends State<CameraRegistrationScreen> {
           children: [
 
             // ── Existing cameras list ────────────────────────────────────
-            _SectionHeader('Registered Cameras'),
+            const _SectionHeader('Registered Cameras'),
             const SizedBox(height: 12),
             _CameraList(isDark: isDark, cardCol: cardCol, divCol: divCol),
             const SizedBox(height: 28),
 
             // ── Add new camera form ──────────────────────────────────────
-            _SectionHeader('Add New Camera'),
+            const _SectionHeader('Add New Camera'),
             const SizedBox(height: 12),
 
             _ThemedField(
@@ -531,7 +531,7 @@ class _CameraList extends StatelessWidget {
                 ),
                 Switch(
                   value      : isActive,
-                  activeColor: Colors.greenAccent.shade400,
+                  activeThumbColor: Colors.greenAccent.shade400,
                   onChanged  : (val) {
                     FirebaseFirestore.instance
                         .collection('cameras')

@@ -330,11 +330,11 @@ class SocCarApp extends StatelessWidget {
       ),
 
       // ── Chip ────────────────────────────────────────────────────────────────
-      chipTheme: ChipThemeData(
+      chipTheme: const ChipThemeData(
         backgroundColor : AppTokens.darkCard,
-        labelStyle      : const TextStyle(color: AppTokens.darkTextSecond, fontSize: 12),
+        labelStyle      : TextStyle(color: AppTokens.darkTextSecond, fontSize: 12),
         selectedColor   : AppTokens.darkAccent,
-        secondaryLabelStyle: const TextStyle(color: Colors.black),
+        secondaryLabelStyle: TextStyle(color: Colors.black),
       ),
 
       // ── TabBar ──────────────────────────────────────────────────────────────

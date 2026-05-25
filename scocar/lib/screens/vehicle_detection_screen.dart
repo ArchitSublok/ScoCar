@@ -794,7 +794,7 @@ class _ConfidenceBar extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-          Text('OCR Confidence',
+          const Text('OCR Confidence',
               style: TextStyle(color: Colors.white38, fontSize: 10, letterSpacing: 0.5)),
           Text('$pct%', style: TextStyle(
               color: color, fontSize: 11, fontWeight: FontWeight.bold)),

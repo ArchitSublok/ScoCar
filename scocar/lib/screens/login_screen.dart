@@ -3,6 +3,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../main.dart' show themeNotifier, AppTokens;
 import 'log_movement_screen.dart' show activeGuardName;
 import 'society_search_field.dart';
+import 'plans_screen.dart';          // ← Plans & pricing screen
+import 'payment_gate_screen.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Role enum
@@ -39,7 +41,7 @@ extension _RoleExt on _Role {
 }
 
 const String _kAdminId   = 'ADMIN';
-const String _kAdminCode = 'SocCar@admin';
+const String _kAdminCode = 'SadminocCar@';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // LoginScreen
@@ -93,6 +95,18 @@ class _LoginScreenState extends State<LoginScreen>
 
   void _selectRole(_Role r) {
     if (_isLoading) return;
+    // Admin tapped — show Plans/Pricing screen first.
+    // Only reveal the admin login form if the user taps "GET STARTED"
+    // (Navigator.pop returns true). If they press back it returns null/false
+    // and the admin chip stays unselected.
+    if (r == _Role.admin && _role != _Role.admin) {
+      _showPlansScreen();
+      return;
+    }
+    _applyRoleSwitch(r);
+  }
+
+  void _applyRoleSwitch(_Role r) {
     setState(() {
       _role            = r;
       _idCtrl.clear();
@@ -102,6 +116,22 @@ class _LoginScreenState extends State<LoginScreen>
     });
     _slideCtrl..reset()..forward();
     FocusScope.of(context).unfocus();
+  }
+
+  Future<void> _showPlansScreen() async {
+    // Push PlansScreen — it returns true when user taps "GET STARTED FREE"
+    final result = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const PlansScreen(autoReturn: true),
+        fullscreenDialog: true,
+      ),
+    );
+    // result == true means they tapped "GET STARTED" and want to log in
+    if (result == true && mounted) {
+      _applyRoleSwitch(_Role.admin);
+    }
+    // result == null/false means they pressed back — do nothing
   }
 
   // ─── Auth ───────────────────────────────────────────────────────────────────
@@ -136,15 +166,22 @@ class _LoginScreenState extends State<LoginScreen>
           return;
         }
         if (mounted) {
-          _grantAccess('✅ Admin access granted — ${_selectedSociety!.mainText}');
-          await Future.delayed(const Duration(milliseconds: 600));
+          _grantAccess('✅ Admin credentials verified — checking subscription…');
+          await Future.delayed(const Duration(milliseconds: 500));
           if (mounted) {
-            Navigator.pushReplacementNamed(context, '/admin_dashboard',
-                arguments: {
-                  'societyName'   : _selectedSociety!.mainText,
-                  'societyAddress': _selectedSociety!.fullDescription,
-                  'placeId'       : _selectedSociety!.placeId,
-                });
+            // Route through PaymentGateScreen.
+            // It will auto-navigate to /admin_dashboard if subscription is active,
+            // or show the trial / payment wall if not.
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (_) => PaymentGateScreen(
+                  societyName    : _selectedSociety!.mainText,
+                  societyAddress : _selectedSociety!.fullDescription,
+                  placeId        : _selectedSociety!.placeId,
+                ),
+              ),
+            );
           }
         }
         return;
@@ -202,7 +239,7 @@ class _LoginScreenState extends State<LoginScreen>
         activeGuardName = guardName.isNotEmpty ? guardName : inputId;
         await FirebaseFirestore.instance
             .collection('guards')
-            .doc(userDoc!.id)
+            .doc(userDoc.id)
             .update({
           'onDuty'   : true,
           'dutyStart': FieldValue.serverTimestamp(),
@@ -651,7 +688,7 @@ class _RoleChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // All roles use the same cyan/blue accent — consistent blue phase
-    final Color accent     = AppTokens.cyanAction;
+    const Color accent     = AppTokens.cyanAction;
     final Color idleBorder = isDark ? Colors.white12    : const Color(0xFFE2E8F0);
     final Color idleText   = isDark ? Colors.white70    : AppTokens.lightTextPrimary;
     final Color idleSubText= isDark ? Colors.white38    : AppTokens.lightTextSecond;

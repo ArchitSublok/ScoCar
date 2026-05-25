@@ -1,15 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/log_sort_service.dart';
-import 'log_movement_screen.dart' show activeGuardName;
 import '../services/notification_service.dart';
 import '../main.dart' show AppTokens, themeNotifier;
 
-import 'discrepancy_alert_overlay.dart';
 import 'delivery_request_card.dart';
 import 'unified_entry_form.dart';
 import 'active_visitors_tab.dart';
-import 'camera_registration_screen.dart';
 import 'vehicle_detection_screen.dart';
 import 'manual_movement_sheet.dart';   // ← Manual movement backup option
 
@@ -642,6 +639,356 @@ class _GuardDashboardState extends State<GuardDashboard> {
     );
   }
 
+  // ── Vehicle Verification Badge (AppBar icon with red dot) ─────────────────
+
+  /// Streams pending-verification vehicles and wraps the car icon with a red
+  /// notification badge showing the count.
+  Widget _buildVehicleVerificationBadge(Color iconColor) {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('vehicles')
+          .where('verificationStatus', isEqualTo: 'PENDING')
+          .snapshots(),
+      builder: (context, snapshot) {
+        final int pendingCount =
+            snapshot.hasData ? snapshot.data!.docs.length : 0;
+
+        return Stack(
+          clipBehavior: Clip.none,
+          children: [
+            IconButton(
+              icon: Icon(Icons.directions_car_rounded, color: iconColor),
+              tooltip: 'Verify New Vehicles',
+              onPressed: () => _showVehicleVerificationSheet(context),
+            ),
+            if (pendingCount > 0)
+              Positioned(
+                right: 6,
+                top  : 6,
+                child: IgnorePointer(
+                  child: Container(
+                    width : 16,
+                    height: 16,
+                    decoration: const BoxDecoration(
+                      color: Colors.redAccent,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Center(
+                      child: Text(
+                        pendingCount > 9 ? '9+' : '$pendingCount',
+                        style: const TextStyle(
+                          color     : Colors.white,
+                          fontSize  : 9,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+
+  /// Bottom sheet listing all vehicles with verificationStatus == 'PENDING'.
+  /// Guard sees plate, owner, flat and can ACCEPT or DENY each one.
+  void _showVehicleVerificationSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.6,
+          minChildSize    : 0.4,
+          maxChildSize    : 0.92,
+          builder: (_, scrollController) {
+            return Container(
+              decoration: BoxDecoration(
+                color       : Theme.of(context).scaffoldBackgroundColor,
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(24)),
+              ),
+              child: Column(
+                children: [
+                  // Handle
+                  Container(
+                    margin : const EdgeInsets.only(top: 12, bottom: 8),
+                    width  : 40,
+                    height : 4,
+                    decoration: BoxDecoration(
+                      color       : Theme.of(context).dividerColor,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color       : Colors.redAccent.withOpacity(0.15),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Icon(Icons.directions_car_rounded,
+                              color: Colors.redAccent, size: 20),
+                        ),
+                        const SizedBox(width: 12),
+                        const Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'VEHICLE VERIFICATION',
+                                style: TextStyle(
+                                  fontWeight  : FontWeight.bold,
+                                  fontSize    : 15,
+                                  letterSpacing: 0.6,
+                                ),
+                              ),
+                              Text(
+                                'Match plate on car, then Accept or Deny',
+                                style: TextStyle(fontSize: 12, color: Colors.grey),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Divider(height: 1),
+                  Expanded(
+                    child: StreamBuilder<QuerySnapshot>(
+                      stream: FirebaseFirestore.instance
+                          .collection('vehicles')
+                          .where('verificationStatus', isEqualTo: 'PENDING')
+                          .snapshots(),
+                      builder: (context, snapshot) {
+                        if (snapshot.connectionState ==
+                            ConnectionState.waiting) {
+                          return const Center(
+                              child: CircularProgressIndicator(
+                                  color: Colors.cyanAccent));
+                        }
+                        if (!snapshot.hasData ||
+                            snapshot.data!.docs.isEmpty) {
+                          return Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.verified_rounded,
+                                    size: 52,
+                                    color: Colors.greenAccent.withOpacity(0.6)),
+                                const SizedBox(height: 12),
+                                const Text('All vehicles verified!',
+                                    style: TextStyle(
+                                        color: Colors.grey, fontSize: 15)),
+                              ],
+                            ),
+                          );
+                        }
+
+                        final docs = snapshot.data!.docs;
+                        return ListView.builder(
+                          controller: scrollController,
+                          padding   : const EdgeInsets.all(16),
+                          itemCount : docs.length,
+                          itemBuilder: (context, index) {
+                            final doc  = docs[index];
+                            final data = doc.data() as Map<String, dynamic>;
+                            final String plate = data['plateNumber'] ?? '—';
+                            final String owner = data['ownerName']   ?? '—';
+                            final String flat  = data['flatNumber']  ?? '—';
+
+                            return Container(
+                              margin: const EdgeInsets.only(bottom: 12),
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: Theme.of(context).cardColor,
+                                borderRadius: BorderRadius.circular(18),
+                                border: Border.all(
+                                    color: Colors.redAccent.withOpacity(0.3),
+                                    width: 1.5),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  // Plate + pending badge
+                                  Row(
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 10, vertical: 5),
+                                        decoration: BoxDecoration(
+                                          color: Colors.black87,
+                                          borderRadius:
+                                              BorderRadius.circular(8),
+                                          border: Border.all(
+                                              color: Colors.white24),
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            const Icon(
+                                                Icons.directions_car_rounded,
+                                                color : Colors.cyanAccent,
+                                                size  : 14),
+                                            const SizedBox(width: 6),
+                                            Text(
+                                              plate,
+                                              style: const TextStyle(
+                                                color     : Colors.white,
+                                                fontWeight: FontWeight.bold,
+                                                fontSize  : 14,
+                                                fontFamily: 'monospace',
+                                                letterSpacing: 1.2,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 8, vertical: 3),
+                                        decoration: BoxDecoration(
+                                          color: Colors.redAccent
+                                              .withOpacity(0.15),
+                                          borderRadius:
+                                              BorderRadius.circular(6),
+                                          border: Border.all(
+                                              color: Colors.redAccent
+                                                  .withOpacity(0.4)),
+                                        ),
+                                        child: const Text(
+                                          'PENDING',
+                                          style: TextStyle(
+                                            color     : Colors.redAccent,
+                                            fontSize  : 10,
+                                            fontWeight: FontWeight.bold,
+                                            letterSpacing: 0.5,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 10),
+                                  // Owner + flat info
+                                  Row(children: [
+                                    Icon(Icons.person_outline_rounded,
+                                        size : 14,
+                                        color: Colors.grey.shade500),
+                                    const SizedBox(width: 5),
+                                    Text(owner,
+                                        style: TextStyle(
+                                            fontSize: 13,
+                                            color: Theme.of(context)
+                                                .textTheme
+                                                .bodyMedium
+                                                ?.color)),
+                                    const SizedBox(width: 16),
+                                    Icon(Icons.apartment_rounded,
+                                        size : 14,
+                                        color: Colors.grey.shade500),
+                                    const SizedBox(width: 5),
+                                    Text('Flat $flat',
+                                        style: TextStyle(
+                                            fontSize: 13,
+                                            color: Theme.of(context)
+                                                .textTheme
+                                                .bodyMedium
+                                                ?.color)),
+                                  ]),
+                                  const SizedBox(height: 14),
+                                  // Accept / Deny buttons
+                                  Row(children: [
+                                    Expanded(
+                                      child: OutlinedButton.icon(
+                                        onPressed: () async {
+                                          await doc.reference.update({
+                                            'verificationStatus': 'DENIED',
+                                            'verifiedBy'        : _guardId,
+                                            'verifiedAt'        :
+                                                FieldValue.serverTimestamp(),
+                                          });
+                                          if (context.mounted) {
+                                            ScaffoldMessenger.of(context)
+                                                .showSnackBar(SnackBar(
+                                              content: Text(
+                                                  '🚫 $plate — vehicle denied.'),
+                                              backgroundColor: Colors.red.shade700,
+                                            ));
+                                          }
+                                        },
+                                        icon : const Icon(Icons.close_rounded,
+                                            size: 16),
+                                        label: const Text('DENY'),
+                                        style: OutlinedButton.styleFrom(
+                                          foregroundColor: Colors.redAccent,
+                                          side: BorderSide(
+                                              color: Colors.redAccent
+                                                  .withOpacity(0.5)),
+                                          shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(10)),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: ElevatedButton.icon(
+                                        onPressed: () async {
+                                          await doc.reference.update({
+                                            'verificationStatus': 'APPROVED',
+                                            'verifiedBy'        : _guardId,
+                                            'verifiedAt'        :
+                                                FieldValue.serverTimestamp(),
+                                          });
+                                          if (context.mounted) {
+                                            ScaffoldMessenger.of(context)
+                                                .showSnackBar(SnackBar(
+                                              content: Text(
+                                                  '✅ $plate — vehicle approved!'),
+                                              backgroundColor:
+                                                  Colors.green.shade700,
+                                            ));
+                                          }
+                                        },
+                                        icon : const Icon(
+                                            Icons.check_rounded,
+                                            size: 16),
+                                        label: const Text('ACCEPT'),
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: Colors.green,
+                                          foregroundColor: Colors.white,
+                                          elevation: 0,
+                                          shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(10)),
+                                        ),
+                                      ),
+                                    ),
+                                  ]),
+                                ],
+                              ),
+                            );
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   // ── Build ─────────────────────────────────────────────────────────────────
 
   @override
@@ -670,6 +1017,9 @@ class _GuardDashboardState extends State<GuardDashboard> {
             style: TextStyle(fontWeight: FontWeight.bold, color: onAppBar),
           ),
           actions: [
+            // ── 0. Vehicle Verification (new vehicle badge) ─────────────
+            _buildVehicleVerificationBadge(iconColor),
+
             // ── 1. ANPR Camera ──────────────────────────────────────────
             IconButton(
               icon   : Icon(Icons.videocam_rounded, color: iconColor),

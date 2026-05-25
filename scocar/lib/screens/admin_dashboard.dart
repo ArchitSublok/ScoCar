@@ -22,13 +22,213 @@ import '../main.dart' show themeNotifier, AppTokens;
 const Color _kAdminAccent  = Color(0xFFFFB300);
 const Color _kAdminAccentDk= Color(0xFFFFCA28);
 
-class AdminDashboard extends StatelessWidget {
+// ─────────────────────────────────────────────────────────────────────────────
+// AdminDashboard — checks Firestore planStatus before showing the dashboard.
+//
+// planStatus flow:
+//   (not set)              → trial not yet started  → shows PlansScreen
+//   'trial'                → within 7 days          → full access
+//   'active'               → paid & verified        → full access
+//   'pending_verification' → UTR submitted, not yet verified → waiting banner
+//   'expired' / anything else → trial over          → sends to PlansScreen
+//
+// The args map passed via Navigator must contain:
+//   { 'societyId': '...', 'societyName': '...' }
+// ─────────────────────────────────────────────────────────────────────────────
+class AdminDashboard extends StatefulWidget {
   const AdminDashboard({super.key});
+  @override
+  State<AdminDashboard> createState() => _AdminDashboardState();
+}
+
+class _AdminDashboardState extends State<AdminDashboard> {
+  bool   _checking = true;
+  String _planStatus = '';
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _checkPlanStatus();
+  }
+
+  Future<void> _checkPlanStatus() async {
+    final args      = ModalRoute.of(context)?.settings.arguments as Map?;
+    final societyId = args?['societyId'] as String? ?? '';
+
+    if (societyId.isEmpty) {
+      // No society — send straight to plans
+      if (mounted) Navigator.pushReplacementNamed(context, '/plans', arguments: args);
+      return;
+    }
+
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('societies')
+          .doc(societyId)
+          .get();
+
+      if (!doc.exists) {
+        // Brand-new society — start free trial
+        final trialEnd = DateTime.now().add(const Duration(days: 7));
+        await FirebaseFirestore.instance
+            .collection('societies')
+            .doc(societyId)
+            .set({
+          'planStatus'   : 'trial',
+          'trialStartAt' : FieldValue.serverTimestamp(),
+          'trialEndsAt'  : Timestamp.fromDate(trialEnd),
+          'societyName'  : args?['societyName'] ?? societyId,
+        }, SetOptions(merge: true));
+        if (mounted) setState(() { _planStatus = 'trial'; _checking = false; });
+        return;
+      }
+
+      final data       = doc.data() as Map<String, dynamic>;
+      final status     = data['planStatus'] as String? ?? '';
+
+      // Check trial expiry
+      if (status == 'trial') {
+        final trialEndsAt = data['trialEndsAt'] as Timestamp?;
+        if (trialEndsAt != null && trialEndsAt.toDate().isBefore(DateTime.now())) {
+          // Trial expired — send to plans
+          if (mounted) {
+            Navigator.pushReplacementNamed(context, '/plans', arguments: args);
+          }
+          return;
+        }
+      }
+
+      // 'active' or 'trial' (not expired) → allow in
+      // 'pending_verification'            → show waiting screen
+      // anything else                     → send to plans
+      if (status == 'active' || status == 'trial') {
+        if (mounted) setState(() { _planStatus = status; _checking = false; });
+      } else if (status == 'pending_verification') {
+        if (mounted) setState(() { _planStatus = 'pending_verification'; _checking = false; });
+      } else {
+        if (mounted) {
+          Navigator.pushReplacementNamed(context, '/plans', arguments: args);
+        }
+      }
+    } catch (e) {
+      // On Firestore error, allow in so guards/admins aren't locked out
+      if (mounted) setState(() { _planStatus = 'active'; _checking = false; });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isDark      = Theme.of(context).brightness == Brightness.dark;
+    final args        = ModalRoute.of(context)?.settings.arguments as Map?;
+    final societyName = args?['societyName'] as String? ?? 'Admin Panel';
+    final societyId   = args?['societyId']   as String? ?? '';
 
+    // ── Loading while checking Firestore ─────────────────────────────────
+    if (_checking) {
+      return Scaffold(
+        backgroundColor: isDark ? const Color(0xFF080B18) : const Color(0xFFF4F6F9),
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const CircularProgressIndicator(color: _kAdminAccent),
+              const SizedBox(height: 18),
+              Text('Verifying subscription…',
+                  style: TextStyle(
+                      color  : isDark ? Colors.white54 : Colors.grey.shade600,
+                      fontSize: 13)),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // ── Payment pending — UTR submitted, waiting for manual verification ──
+    if (_planStatus == 'pending_verification') {
+      return Scaffold(
+        backgroundColor: isDark ? const Color(0xFF080B18) : const Color(0xFFF4F6F9),
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  width : 90, height: 90,
+                  decoration: BoxDecoration(
+                    color : const Color(0xFFFFB300).withOpacity(0.12),
+                    shape : BoxShape.circle,
+                    border: Border.all(color: _kAdminAccent.withOpacity(0.4), width: 2),
+                  ),
+                  child: const Icon(Icons.access_time_rounded,
+                      color: _kAdminAccent, size: 44),
+                ),
+                const SizedBox(height: 28),
+                Text('Payment Under Verification',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                        color     : isDark ? Colors.white : const Color(0xFF111827),
+                        fontSize  : 22,
+                        fontWeight: FontWeight.bold)),
+                const SizedBox(height: 14),
+                Text(
+                  'Your UTR has been received. We\'re verifying your payment — '
+                  'this usually takes 2–10 minutes during business hours.\n\n'
+                  'Once verified, your Annual Plan activates automatically. '
+                  'Please check back shortly.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                      color  : isDark ? Colors.white54 : Colors.grey.shade600,
+                      fontSize: 13,
+                      height : 1.65),
+                ),
+                const SizedBox(height: 32),
+                // Retry button — re-checks Firestore
+                SizedBox(
+                  width : double.infinity,
+                  height: 52,
+                  child : ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _kAdminAccent,
+                      foregroundColor: Colors.black,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14)),
+                    ),
+                    onPressed: () {
+                      setState(() => _checking = true);
+                      _checkPlanStatus();
+                    },
+                    icon : const Icon(Icons.refresh_rounded, size: 20),
+                    label: const Text('Check Again',
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextButton(
+                  onPressed: () => Navigator.pushReplacementNamed(context, '/'),
+                  child: Text('Logout',
+                      style: TextStyle(
+                          color  : isDark ? Colors.white38 : Colors.grey.shade500,
+                          fontSize: 13)),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    // ── Trial banner (shown at top of dashboard during trial) ─────────────
+    Widget? trialBanner;
+    if (_planStatus == 'trial') {
+      trialBanner = _TrialBanner(
+        societyId  : societyId,
+        societyName: societyName,
+        isDark     : isDark,
+      );
+    }
+
+    // ── Full dashboard ────────────────────────────────────────────────────
     return DefaultTabController(
       length: 3,
       child: Scaffold(
@@ -41,8 +241,8 @@ class AdminDashboard extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               Container(
-                padding     : const EdgeInsets.all(6),
-                decoration  : BoxDecoration(
+                padding    : const EdgeInsets.all(6),
+                decoration : BoxDecoration(
                   color       : _kAdminAccent.withOpacity(0.18),
                   borderRadius: BorderRadius.circular(8),
                 ),
@@ -50,18 +250,35 @@ class AdminDashboard extends StatelessWidget {
                     color: _kAdminAccent, size: 18),
               ),
               const SizedBox(width: 10),
-              const Text('ADMIN PANEL',
-                  style: TextStyle(
-                      color      : Colors.white,
-                      fontWeight : FontWeight.w900,
-                      letterSpacing: 1.5,
-                      fontSize   : 16)),
+              Flexible(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text('ADMIN PANEL',
+                        style: TextStyle(
+                            color        : Colors.white,
+                            fontWeight   : FontWeight.w900,
+                            letterSpacing: 1.0,
+                            fontSize     : 13)),
+                    if (societyName != 'Admin Panel')
+                      Text(
+                        societyName,
+                        style: TextStyle(
+                            color     : _kAdminAccent.withOpacity(0.8),
+                            fontSize  : 10,
+                            fontWeight: FontWeight.w600),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                  ],
+                ),
+              ),
             ],
           ),
           centerTitle: true,
           elevation  : 0,
           actions    : [
-            // Theme toggle
             ValueListenableBuilder<ThemeMode>(
               valueListenable: themeNotifier,
               builder: (_, mode, __) => IconButton(
@@ -78,12 +295,10 @@ class AdminDashboard extends StatelessWidget {
                 },
               ),
             ),
-            // Logout
             IconButton(
               icon     : const Icon(Icons.logout_rounded, color: Colors.white70),
               tooltip  : 'Logout',
-              onPressed: () =>
-                  Navigator.pushReplacementNamed(context, '/'),
+              onPressed: () => Navigator.pushReplacementNamed(context, '/'),
             ),
           ],
           bottom: const TabBar(
@@ -91,20 +306,101 @@ class AdminDashboard extends StatelessWidget {
             labelColor          : _kAdminAccent,
             unselectedLabelColor: Colors.white60,
             tabs: [
-              Tab(icon: Icon(Icons.shield_rounded,     size: 20), text: 'Guards'),
-              Tab(icon: Icon(Icons.home_rounded,       size: 20), text: 'Residents'),
-              Tab(icon: Icon(Icons.history_rounded,    size: 20), text: 'Entry Logs'),
+              Tab(icon: Icon(Icons.shield_rounded,  size: 20), text: 'Guards'),
+              Tab(icon: Icon(Icons.home_rounded,    size: 20), text: 'Residents'),
+              Tab(icon: Icon(Icons.history_rounded, size: 20), text: 'Entry Logs'),
             ],
           ),
         ),
-        body: const TabBarView(
+        body: Column(
           children: [
-            _GuardsTab(),
-            _ResidentsTab(),
-            _LogsTab(),
+            if (trialBanner != null) trialBanner,
+            const Expanded(
+              child: TabBarView(
+                children: [
+                  _GuardsTab(),
+                  _ResidentsTab(),
+                  _LogsTab(),
+                ],
+              ),
+            ),
           ],
         ),
       ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// _TrialBanner — shown at top of dashboard during 7-day trial
+// ─────────────────────────────────────────────────────────────────────────────
+class _TrialBanner extends StatelessWidget {
+  final String societyId;
+  final String societyName;
+  final bool   isDark;
+  const _TrialBanner({
+    required this.societyId,
+    required this.societyName,
+    required this.isDark,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('societies')
+          .doc(societyId)
+          .snapshots(),
+      builder: (context, snap) {
+        int daysLeft = 7;
+        if (snap.hasData && snap.data!.exists) {
+          final data     = snap.data!.data() as Map<String, dynamic>;
+          final endsAt   = data['trialEndsAt'] as Timestamp?;
+          if (endsAt != null) {
+            daysLeft = endsAt.toDate().difference(DateTime.now()).inDays.clamp(0, 7);
+          }
+        }
+
+        return GestureDetector(
+          onTap: () => Navigator.pushNamed(
+            context,
+            '/plans',
+            arguments: {'societyId': societyId, 'societyName': societyName},
+          ),
+          child: Container(
+            width  : double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            color  : daysLeft <= 2
+                ? Colors.redAccent.withOpacity(0.9)
+                : const Color(0xFFFFB300).withOpacity(0.9),
+            child: Row(
+              children: [
+                Icon(
+                  daysLeft <= 2
+                      ? Icons.warning_amber_rounded
+                      : Icons.access_time_rounded,
+                  color: Colors.black,
+                  size : 16,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    daysLeft > 0
+                        ? 'Free trial — $daysLeft day${daysLeft == 1 ? "" : "s"} remaining. Tap to upgrade.'
+                        : 'Trial expired — tap to activate your Annual Plan.',
+                    style: const TextStyle(
+                        color     : Colors.black,
+                        fontSize  : 12,
+                        fontWeight: FontWeight.bold),
+                  ),
+                ),
+                const Icon(Icons.chevron_right_rounded,
+                    color: Colors.black54, size: 16),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }

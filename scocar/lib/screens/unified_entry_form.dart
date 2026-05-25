@@ -441,9 +441,9 @@ class _UnifiedEntryFormState extends State<UnifiedEntryForm>
                           color: Colors.cyanAccent, size: 20),
                     ),
                     const SizedBox(width: 12),
-                    Column(
+                    const Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
-                      children: const [
+                      children: [
                         Text(
                           'NEW ENTRY LOG',
                           style: TextStyle(

@@ -497,7 +497,7 @@ class NotificationService {
 
       // Log to alerts
       await FirebaseFirestore.instance.collection('alerts').add({
-        'type': 'VEHICLE_${type}',
+        'type': 'VEHICLE_$type',
         'plateNumber': plateNumber,
         'targetFlat': flatNumber,
         'message': 'Vehicle $plateNumber ${type == 'ENTRY' ? 'entered' : 'exited'} the gate.',

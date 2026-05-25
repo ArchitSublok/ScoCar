@@ -51,6 +51,7 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
         'flatNumber': flat,
         'contact': phone,
         'timestamp': FieldValue.serverTimestamp(),
+        'verificationStatus': 'PENDING', // Guard must verify before green
       });
 
       // 2. Safely sync the profile name schema into the 'residents' index document
@@ -60,7 +61,7 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
       }, SetOptions(merge: true));
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Asset catalog synchronization complete!"), backgroundColor: Colors.green));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Vehicle registered! Awaiting guard verification."), backgroundColor: Colors.orange));
         Navigator.pop(context);
       }
     } catch (e) {

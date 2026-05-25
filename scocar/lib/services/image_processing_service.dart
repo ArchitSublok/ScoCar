@@ -13,7 +13,6 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import 'dart:async';
-import 'dart:typed_data';
 
 // FIX 1: dart:io and dart:isolate are NOT available on Flutter Web.
 // Use kIsWeb to branch at runtime; keep native-only code inside the guard.
